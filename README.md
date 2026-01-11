@@ -14,11 +14,7 @@ Not affiliated with Valve, Steam, or DepotDownloader.
 
 ## Download
 
-- Windows x64: https://google.com
-- macOS (Apple Silicon, 12+): https://google.com
-- macOS (Intel, 12+): https://google.com
-- Linux x64: https://google.com
-
+- See the Releases page for the latest downloads and release notes: https://github.com/elgreams/OmniPacker/releases
 ---
 
 ## Quick Start
@@ -117,7 +113,6 @@ Minimum version: macOS 12 (Monterey) due to DepotDownloader requirements.
 
 **Prerequisites:**
 1. Install Xcode Command Line Tools
-2. Configure notarization credentials (Apple ID + app-specific password/team ID)
 
 **macOS x64 (Intel):**
 ```bash
