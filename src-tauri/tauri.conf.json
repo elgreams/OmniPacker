@@ -1,0 +1,62 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OmniPacker",
+  "version": "0.1.0",
+  "identifier": "com.omnipacker.app",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "OmniPacker",
+        "width": 1140,
+        "height": 760,
+        "minHeight": 760,
+        "center": true,
+        "resizable": false,
+        "maximizable": false,
+        "windowClassname": "OmniPacker"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/icon.png",
+      "icons/icon-512.png",
+      "icons/icon-256.png",
+      "icons/icon-128.png",
+      "icons/icon-64.png",
+      "icons/icon-48.png",
+      "icons/icon-32.png",
+      "icons/icon-16.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
+    "targets": "all",
+    "externalBin": [],
+    "resources": [
+      "binaries/win-x64/*",
+      "binaries/win-arm64/*",
+      "binaries/linux-x64/*",
+      "binaries/linux-arm64/*",
+      "binaries/linux-arm/*",
+      "binaries/macos-x64/*",
+      "binaries/macos-arm64/*"
+    ],
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false,
+        "files": {}
+      },
+      "deb": {
+        "depends": []
+      }
+    }
+  }
+}

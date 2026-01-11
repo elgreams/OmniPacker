@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OmniPacker</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <main class="app">
+      <header class="tab-bar" role="tablist">
+        <button class="tab active" type="button" role="tab" data-tab="queue" data-i18n="tab.queue">
+          Queue
+        </button>
+        <button class="tab" type="button" role="tab" data-tab="console" data-i18n="tab.console">
+          Console
+        </button>
+      </header>
+
+      <section class="tab-content active" id="tab-queue" role="tabpanel">
+        <div class="queue-layout">
+          <section class="queue-panel">
+            <div class="queue-panel-header">
+              <label class="section-label" for="queue-list" data-i18n="queue.label">Queue:</label>
+              <button type="button" class="queue-clear-button" data-i18n="queue.clear">
+                Clear Queue
+              </button>
+            </div>
+            <div id="queue-list" class="queue-list" role="listbox"></div>
+          </section>
+
+          <aside class="credentials">
+            <div class="app-branding">
+              <img class="app-icon" src="/assets/icon.png" alt="OmniPacker" />
+            </div>
+            <label class="login-field" for="steam-username" data-i18n="auth.username">Steam Username:</label>
+            <input class="login-field" id="steam-username" type="text" />
+
+            <div class="field-gap"></div>
+
+            <label class="login-field" for="steam-password" data-i18n="auth.password">Steam Password:</label>
+            <input class="login-field" id="steam-password" type="password" />
+
+            <label class="checkbox-row" for="qr-login-toggle">
+              <input id="qr-login-toggle" type="checkbox" />
+              <span data-i18n="auth.qr">Use QR Login</span>
+            </label>
+
+            <div class="button-stack">
+              <button type="button" class="save-login-button" data-i18n="auth.save">Save Login Details</button>
+              <button type="button" class="settings-button" data-i18n="settings.button">Settings</button>
+              <button type="button" class="template-editor-button" data-i18n="template.button">
+                Template Editor
+              </button>
+            </div>
+          </aside>
+
+          <div class="lower-grid">
+            <section class="panel game-manager" aria-label="Game Manager">
+              <div class="panel-title" data-i18n="game.title">Game Manager</div>
+              <div class="form-row app-id-row">
+                <label for="appid" data-i18n="game.appid">AppID:</label>
+                <input id="appid" type="text" />
+                <button type="button" class="add-to-queue" data-i18n="game.add">Add to Queue</button>
+              </div>
+              <div class="form-row">
+                <label for="os-select" data-i18n="game.os">OS:</label>
+                <select id="os-select">
+                  <option value="Windows x64" data-i18n="os.windowsX64">Windows x64</option>
+                  <option value="Windows x86" data-i18n="os.windowsX86">Windows x86</option>
+                  <option value="Linux" data-i18n="os.linux">Linux</option>
+                  <option value="macOS" data-i18n="os.macos">MacOS</option>
+                </select>
+              </div>
+            </section>
+
+            <section class="panel" aria-label="Branch Manager">
+              <div class="panel-title" data-i18n="branch.title">Branch Manager</div>
+              <div class="form-row branch-row">
+                <label for="branch" data-i18n="branch.label">Branch to download:</label>
+                <input id="branch" type="text" />
+              </div>
+              <label class="checkbox-row">
+                <input id="branch-password-toggle" type="checkbox" />
+                <span data-i18n="branch.password">Branch password? (Enter below)</span>
+              </label>
+              <input id="branch-password" type="password" disabled />
+            </section>
+
+            <div class="start-panel">
+              <button type="button" class="start-button">Start</button>
+              <button type="button" class="open-output-button" data-i18n="output.open">
+                Open Output Folder
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-content" id="tab-console" role="tabpanel">
+        <div class="console-layout">
+          <textarea class="console-output" readonly>
+[00:00:00] Console ready.
+          </textarea>
+        </div>
+      </section>
+    </main>
+
+    <div class="modal-overlay qr-modal-overlay" role="dialog" aria-modal="true">
+      <div class="modal qr-modal">
+        <div class="modal-title" data-i18n="qr.title">Steam QR Login</div>
+        <pre class="qr-modal-output" aria-live="polite"></pre>
+        <div class="qr-modal-help" data-i18n="qr.help">Scan with Steam Mobile App</div>
+        <div class="modal-actions">
+          <button type="button" class="qr-copy-button" data-i18n="action.copy">Copy</button>
+          <button type="button" class="qr-close-button" data-i18n="action.close">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay settings-modal-overlay" role="dialog" aria-modal="true">
+      <div class="modal settings-modal">
+        <div class="modal-title" data-i18n="settings.title">Settings</div>
+        <div class="settings-content">
+          <div class="settings-group">
+            <label class="settings-label" for="language-select" data-i18n="settings.language">Language:</label>
+            <select id="language-select" class="settings-select">
+              <option value="en" selected>English</option>
+              <option value="es">Español</option>
+              <option value="fr">Français</option>
+              <option value="ru">Русский</option>
+              <option value="de">Deutsch</option>
+            </select>
+          </div>
+
+          <div class="settings-group">
+            <label class="settings-checkbox-row">
+              <input id="skip-compression-toggle" type="checkbox" />
+              <span data-i18n="settings.skipCompression">Skip compression after download</span>
+            </label>
+          </div>
+
+          <div class="settings-group">
+            <label class="settings-checkbox-row">
+              <input id="compression-password-toggle" type="checkbox" />
+              <span data-i18n="settings.compressionPasswordToggle">Use compression password</span>
+            </label>
+            <div class="settings-password-row">
+              <label class="settings-label" for="compression-password-input" data-i18n="settings.compressionPasswordLabel">
+                Compression password:
+              </label>
+              <input id="compression-password-input" type="text" disabled />
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <label class="settings-checkbox-row">
+              <input id="default-qr-toggle" type="checkbox" />
+              <span data-i18n="settings.defaultQrLogin">Default to QR Login</span>
+            </label>
+          </div>
+
+          <div class="settings-group">
+            <button type="button" class="settings-delete-login-button" data-i18n="settings.deleteLogin">
+              Delete Saved Login Data
+            </button>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="settings-close-button" data-i18n="action.close">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay template-modal-overlay" role="dialog" aria-modal="true">
+      <div class="modal template-modal">
+        <div class="template-header">
+          <div class="modal-title" data-i18n="template.title">Template Editor</div>
+          <button type="button" class="template-close-button" data-i18n="action.close">Close</button>
+        </div>
+        <div class="template-body">
+          <section class="template-panel template-builder-panel">
+            <div class="template-panel-header">
+              <div class="template-panel-title" data-i18n="template.builder">Block Builder</div>
+              <div class="template-panel-actions">
+                <select class="template-block-select"></select>
+                <button type="button" class="template-add-block-button" data-i18n="template.addBlock">
+                  Add Block
+                </button>
+              </div>
+            </div>
+            <div class="template-status" aria-live="polite"></div>
+            <div class="template-blocks"></div>
+            <div class="template-file-actions">
+              <button type="button" class="template-load-button" data-i18n="template.load">Load JSON</button>
+              <button type="button" class="template-save-button" data-i18n="template.save">Save JSON</button>
+              <button type="button" class="template-reset-button" data-i18n="template.reset">Reset to Default</button>
+              <input class="template-load-input" type="file" accept="application/json" hidden />
+            </div>
+          </section>
+          <section class="template-panel template-preview-panel">
+            <div class="template-panel-header">
+              <div class="template-panel-title" data-i18n="template.preview">Live Preview</div>
+              <div class="template-panel-actions">
+                <button type="button" class="template-copy-button" data-i18n="template.copy">
+                  Copy BBCode
+                </button>
+              </div>
+            </div>
+            <div class="template-preview-meta">Preview</div>
+            <textarea class="template-preview-output" readonly></textarea>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay template-confirm-overlay" role="dialog" aria-modal="true">
+      <div class="modal template-confirm-modal">
+        <div class="modal-title" data-i18n="template.confirm.title">Reset to Default</div>
+        <div class="template-confirm-message" data-i18n="template.confirm.save">
+          Save current template to JSON before resetting?
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="template-confirm-yes" data-i18n="action.yes">Yes</button>
+          <button type="button" class="template-confirm-no" data-i18n="action.no">No</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay output-conflict-overlay" role="dialog" aria-modal="true">
+      <div class="modal output-conflict-modal">
+        <div class="modal-title" data-i18n="output.conflict.title">Output already exists</div>
+        <div class="output-conflict-message"></div>
+        <div class="output-conflict-path"></div>
+        <div class="modal-actions">
+          <button type="button" class="output-conflict-overwrite" data-i18n="output.conflict.overwrite">
+            Overwrite
+          </button>
+          <button type="button" class="output-conflict-copy" data-i18n="output.conflict.copy">
+            Make Copy
+          </button>
+          <button type="button" class="output-conflict-cancel" data-i18n="output.conflict.cancel">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay steam-guard-modal-overlay" role="dialog" aria-modal="true">
+      <div class="modal steam-guard-modal">
+        <div class="modal-title" data-i18n="steamGuard.title">Steam Guard Confirmation</div>
+        <div class="steam-guard-content">
+          <div class="steam-guard-icon">&#128274;</div>
+          <div class="steam-guard-message" data-i18n="steamGuard.message">
+            STEAM GUARD! Use the Steam Mobile App to confirm your sign in...
+          </div>
+          <div class="steam-guard-status" data-i18n="steamGuard.waiting">Waiting for confirmation...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay steam-guard-email-overlay" role="dialog" aria-modal="true">
+      <div class="modal steam-guard-modal steam-guard-email-modal">
+        <div class="modal-title" data-i18n="steamGuard.email.title">Steam Guard Email Code</div>
+        <div class="steam-guard-content">
+          <div class="steam-guard-icon">&#128231;</div>
+          <div class="steam-guard-message steam-guard-email-message">
+            STEAM GUARD! Please enter the auth code sent to the email at email.
+          </div>
+          <div class="steam-guard-email-input-row">
+            <input class="steam-guard-email-input" type="text" placeholder="Code" />
+            <button type="button" class="steam-guard-email-submit" data-i18n="action.submit">
+              Submit
+            </button>
+          </div>
+          <div class="steam-guard-status steam-guard-email-status" data-i18n="steamGuard.email.status">
+            Enter the code from your email.
+          </div>
+          <div class="modal-actions steam-guard-email-actions">
+            <button type="button" class="steam-guard-email-close" data-i18n="action.close">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
