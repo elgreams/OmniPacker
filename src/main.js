@@ -1129,6 +1129,7 @@ const loadTemplateMetadata = async () => {
 
 const openTemplateEditor = async () => {
   templateModalOverlay?.classList.add("active");
+  await syncTemplateStorage();
   if (templateState.blocks.length === 0) {
     const storedBlocks = loadDefaultTemplateFromSettings();
     templateState.blocks = storedBlocks || createDefaultTemplate();
@@ -1475,13 +1476,15 @@ const renderTemplatePreview = () => {
   }
 };
 
-const serializeTemplate = () => ({
+const serializeTemplateBlocks = (blocks) => ({
   version: 1,
-  blocks: templateState.blocks.map((block) => ({
+  blocks: blocks.map((block) => ({
     type: block.type,
     config: block.config,
   })),
 });
+
+const serializeTemplate = () => serializeTemplateBlocks(templateState.blocks);
 
 const parseTemplatePayload = (payload) => {
   if (!payload || !Array.isArray(payload.blocks)) {
@@ -1536,6 +1539,18 @@ const parseTemplatePayload = (payload) => {
     throw new Error(t("template.error.invalidFile"));
   }
   return parsedBlocks;
+};
+
+const isValidTemplatePayload = (payload) => {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+  try {
+    parseTemplatePayload(payload);
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 const saveTemplateToFile = async () => {
@@ -1653,8 +1668,7 @@ const resetTemplateToDefault = async () => {
     saveTemplateToFile();
   }
   templateState.blocks = createDefaultTemplate();
-  settingsState.defaultTemplate = null;
-  saveSettings();
+  await persistTemplateDefault();
   setTemplateStatus(t("template.status.reset"));
   renderTemplateBuilder();
   renderTemplatePreview();
@@ -2551,6 +2565,42 @@ if (branchToggle && branchPassword) {
 const tauriEvent = window.__TAURI__?.event;
 const tauriInvoke = window.__TAURI__?.core?.invoke;
 
+const syncTemplateStorage = async () => {
+  if (!tauriInvoke) {
+    return;
+  }
+
+  let backendPayload = null;
+  try {
+    backendPayload = await tauriInvoke("load_template_data");
+  } catch (error) {
+    console.debug("[OmniPacker] Failed to load backend template:", error);
+  }
+
+  const localPayload = settingsState.defaultTemplate;
+  const localValid = isValidTemplatePayload(localPayload);
+  const backendValid = isValidTemplatePayload(backendPayload);
+
+  if (!localValid && backendValid) {
+    settingsState.defaultTemplate = backendPayload;
+    saveSettings();
+    return;
+  }
+
+  let payloadToSave = localValid ? localPayload : null;
+  if (!payloadToSave) {
+    payloadToSave = serializeTemplateBlocks(createDefaultTemplate());
+    settingsState.defaultTemplate = payloadToSave;
+    saveSettings();
+  }
+
+  try {
+    await tauriInvoke("save_template_data", { templatePayload: payloadToSave });
+  } catch (error) {
+    console.debug("[OmniPacker] Failed to save template to backend:", error);
+  }
+};
+
 const warnOrphanEvent = (eventName, payload) => {
   console.debug(
     `[OmniPacker] Dropped ${eventName} (no running job).`,
@@ -2772,6 +2822,8 @@ const startJob = async () => {
     renderAll();
     return;
   }
+
+  await syncTemplateStorage();
 
   try {
     const jobMetadata = buildJobMetadata(jobToRun);
@@ -3391,6 +3443,7 @@ if (deleteLoginButton) {
 
 // Load settings from localStorage on startup
 loadSettings();
+void syncTemplateStorage();
 applySettingsToUI();
 applyDefaultQrLogin();
 void loadSavedLoginDetails();
