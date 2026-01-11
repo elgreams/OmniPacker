@@ -33,18 +33,6 @@ This will use all platform binaries for development but only load the correct on
 
 ## Production Builds
 
-### Automated CI/CD (Recommended)
-
-The GitHub Actions workflow (`.github/workflows/build.yml`) automatically:
-1. Builds for all supported platforms using dedicated build scripts
-2. Creates platform-specific artifacts
-3. Creates GitHub releases on version tags
-
-**To trigger a release:**
-```bash
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
-```
 
 ### Local Platform-Specific Builds
 
