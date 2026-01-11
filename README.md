@@ -71,7 +71,7 @@ npm run tauri dev
 
 ---
 
-## Release Builds (Signed, Production-Quality)
+## Release Builds (Production-Quality)
 
 Release builds **must** be created using the platform-specific build scripts in the
 `scripts/` directory. These scripts ensure that only the target platform's binaries
