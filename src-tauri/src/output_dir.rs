@@ -42,17 +42,54 @@ fn is_appimage_env() -> bool {
 }
 
 #[cfg(target_os = "linux")]
+fn is_kde_session() -> bool {
+    if let Ok(desktop) = std::env::var("XDG_CURRENT_DESKTOP") {
+        if desktop
+            .split(':')
+            .any(|entry| entry.eq_ignore_ascii_case("kde"))
+        {
+            return true;
+        }
+    }
+    std::env::var_os("KDE_FULL_SESSION").is_some()
+        || std::env::var_os("KDE_SESSION_VERSION").is_some()
+}
+
+#[cfg(target_os = "linux")]
 fn run_sanitized_open(program: &str, args: &[&OsStr]) -> Result<(), String> {
-    let status = Command::new(program)
-        .args(args)
-        .env_remove("LD_LIBRARY_PATH")
-        .env_remove("QT_PLUGIN_PATH")
-        .env_remove("QML2_IMPORT_PATH")
-        .env_remove("APPIMAGE")
-        .env_remove("APPDIR")
+    let mut cmd = Command::new(program);
+    cmd.args(args)
+        .env_clear()
+        .env("PATH", "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+
+    for key in [
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "DISPLAY",
+        "WAYLAND_DISPLAY",
+        "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "XAUTHORITY",
+        "XDG_CURRENT_DESKTOP",
+        "XDG_SESSION_TYPE",
+        "XDG_ACTIVATION_TOKEN",
+        "DESKTOP_STARTUP_ID",
+        "KDE_FULL_SESSION",
+        "KDE_SESSION_VERSION",
+        "LANG",
+        "LC_ALL",
+    ] {
+        if let Ok(value) = std::env::var(key) {
+            cmd.env(key, value);
+        }
+    }
+
+    let status = cmd
         .status()
         .map_err(|err| format!("{program} failed to start: {err}"))?;
 
@@ -73,15 +110,27 @@ fn open_path_appimage(path: &Path) -> Result<(), String> {
     })?;
     let path_arg = path.as_os_str();
 
-    let candidates = vec![
-        ("xdg-open", vec![path_arg]),
-        ("gio", vec![OsStr::new("open"), path_arg]),
-        ("kde-open5", vec![path_arg]),
-        ("kde-open6", vec![path_arg]),
-        ("kde-open", vec![path_arg]),
-        ("kioclient5", vec![OsStr::new("exec"), path_arg]),
-        ("kioclient6", vec![OsStr::new("exec"), path_arg]),
-    ];
+    let candidates = if is_kde_session() {
+        vec![
+            ("gio", vec![OsStr::new("open"), path_arg]),
+            ("kioclient5", vec![OsStr::new("exec"), path_arg]),
+            ("kioclient6", vec![OsStr::new("exec"), path_arg]),
+            ("kde-open5", vec![path_arg]),
+            ("kde-open6", vec![path_arg]),
+            ("kde-open", vec![path_arg]),
+            ("xdg-open", vec![path_arg]),
+        ]
+    } else {
+        vec![
+            ("gio", vec![OsStr::new("open"), path_arg]),
+            ("xdg-open", vec![path_arg]),
+            ("kde-open5", vec![path_arg]),
+            ("kde-open6", vec![path_arg]),
+            ("kde-open", vec![path_arg]),
+            ("kioclient5", vec![OsStr::new("exec"), path_arg]),
+            ("kioclient6", vec![OsStr::new("exec"), path_arg]),
+        ]
+    };
 
     let mut last_err = None;
     for (program, args) in candidates {
