@@ -1,3 +1,4 @@
+mod acf_generator;
 mod debug_console;
 mod depot_runner;
 mod job_finalization;

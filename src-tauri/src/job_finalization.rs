@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
+use crate::acf_generator;
 use crate::job_metadata::JobMetadataFile;
 use crate::job_staging::resolve_staging_dir;
 use crate::output_conflict::{request_output_conflict_resolution, OutputConflictChoice};
@@ -189,7 +191,14 @@ fn build_temp_output(
         .map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
     // Transform depots/ → steamapps/common/ and collect manifests → depotcache/
-    transform_depots_to_steamapps(staging_dir, &temp_dir, metadata)?;
+    // Returns a map of depot_id → actual manifest_id (extracted from .manifest filenames)
+    let manifest_map = transform_depots_to_steamapps(staging_dir, &temp_dir, metadata)?;
+
+    // Generate appmanifest_<appid>.acf file
+    let steamapps_dir = temp_dir.join("steamapps");
+    let common_dir = steamapps_dir.join("common");
+    let install_dir_name = sanitize_game_name(&metadata.game_name);
+    acf_generator::write_acf_file(&steamapps_dir, metadata, &common_dir, &install_dir_name, &manifest_map)?;
 
     Ok(temp_dir)
 }
@@ -265,14 +274,20 @@ fn remove_existing_archive(path: &Path) -> Result<(), String> {
 /// We need to create:
 /// - steamapps/common/<DepotName>/(files, excluding .DepotDownloader/)
 /// - depotcache/*.manifest (collected from all .DepotDownloader/ directories)
+///
+/// # Returns
+/// A map of depot_id → actual manifest_id (extracted from .manifest filenames)
 fn transform_depots_to_steamapps(
     staging_dir: &Path,
     temp_dir: &Path,
     metadata: &JobMetadataFile,
-) -> Result<(), String> {
+) -> Result<HashMap<String, String>, String> {
     let depots_dir = staging_dir.join("depots");
     let steamapps_common_dir = temp_dir.join("steamapps").join("common");
     let depotcache_dir = temp_dir.join("depotcache");
+
+    // Map of depot_id → actual manifest_id (extracted from .manifest filenames)
+    let mut manifest_map: HashMap<String, String> = HashMap::new();
 
     // Create directories
     fs::create_dir_all(&steamapps_common_dir)
@@ -281,7 +296,7 @@ fn transform_depots_to_steamapps(
         .map_err(|e| format!("Failed to create depotcache/: {}", e))?;
 
     // Create a lookup map for depot names from metadata
-    let depot_names: std::collections::HashMap<String, String> = metadata
+    let depot_names: HashMap<String, String> = metadata
         .depots
         .iter()
         .map(|d| (d.depot_id.clone(), d.depot_name.clone()))
@@ -340,8 +355,14 @@ fn transform_depots_to_steamapps(
 
                 // Copy .manifest files (not .manifest.sha or staging/)
                 if manifest_path.is_file() && manifest_path.extension().map(|e| e == "manifest").unwrap_or(false) {
-                    let manifest_name = manifest_entry.file_name();
-                    fs::copy(&manifest_path, depotcache_dir.join(&manifest_name))
+                    let manifest_filename = manifest_entry.file_name().to_string_lossy().to_string();
+
+                    // Extract manifest ID from filename (format: {manifest_id}.manifest)
+                    if let Some(manifest_id) = manifest_filename.strip_suffix(".manifest") {
+                        manifest_map.insert(depot_id.clone(), manifest_id.to_string());
+                    }
+
+                    fs::copy(&manifest_path, depotcache_dir.join(&manifest_filename))
                         .map_err(|e| format!("Failed to copy manifest file: {}", e))?;
                 }
             }
@@ -355,7 +376,7 @@ fn transform_depots_to_steamapps(
         })?;
     }
 
-    Ok(())
+    Ok(manifest_map)
 }
 
 /// Step 6: Atomic rename from temp to final

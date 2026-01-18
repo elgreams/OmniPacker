@@ -64,6 +64,29 @@ fn get_shared_depot_name(depot_id: &str) -> Option<String> {
     }
 }
 
+/// Returns the owner appid for a shared depot
+///
+/// In Steam's .acf format, shared depots are listed in a `SharedDepots` section
+/// with the format: `"depot_id" "owner_appid"`
+pub fn get_shared_depot_owner(depot_id: &str) -> &'static str {
+    match depot_id {
+        // Steamworks Common Redistributables (all owned by 228980)
+        "228980" | "228989" | "228990" => "228980",
+        // DirectX redistributables
+        "228983" | "228984" | "228986" => "228980",
+        // Visual C++ redistributables
+        "228985" => "228980",
+        // OpenAL
+        "228987" => "228980",
+        // Steam Linux Runtime - these are their own owners
+        "1391110" => "1391110",  // Steam Linux Runtime (base)
+        "1628210" => "1628350",  // Steam Linux Runtime - Soldier (owned by app 1628350)
+        "1826330" => "1826330",  // Steam Linux Runtime - Sniper
+        // Default to Steamworks Common Redistributables app
+        _ => "228980",
+    }
+}
+
 /// Gets a human-readable name for a depot
 ///
 /// Strategy:
