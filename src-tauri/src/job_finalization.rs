@@ -190,15 +190,30 @@ fn build_temp_output(
     fs::create_dir_all(&temp_dir)
         .map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
+    // Determine installdir: must match the on-disk folder name that all non-shared depot
+    // files will be merged into. Prefer the primary depot's name from metadata; fall back
+    // to sanitized game name only if the primary depot isn't found.
+    let install_dir_name = metadata
+        .depots
+        .iter()
+        .find(|d| d.depot_id == metadata.primary_depot_id)
+        .map(|d| d.depot_name.clone())
+        .unwrap_or_else(|| sanitize_game_name(&metadata.game_name));
+
+    // Compute per-depot sizes from the staging structure BEFORE the merge.
+    // After merge, all non-shared depot files live in one folder and individual sizes
+    // can no longer be determined.
+    let depot_sizes = compute_depot_sizes_from_staging(staging_dir, metadata);
+
     // Transform depots/ → steamapps/common/ and collect manifests → depotcache/
     // Returns a map of depot_id → actual manifest_id (extracted from .manifest filenames)
-    let manifest_map = transform_depots_to_steamapps(staging_dir, &temp_dir, metadata)?;
+    let manifest_map = transform_depots_to_steamapps(staging_dir, &temp_dir, metadata, &install_dir_name)?;
 
-    // Generate appmanifest_<appid>.acf file
+    // Generate appmanifest_<appid>.acf and appmanifest_228980.acf (shared redistributables)
     let steamapps_dir = temp_dir.join("steamapps");
     let common_dir = steamapps_dir.join("common");
-    let install_dir_name = sanitize_game_name(&metadata.game_name);
-    acf_generator::write_acf_file(&steamapps_dir, metadata, &common_dir, &install_dir_name, &manifest_map)?;
+    acf_generator::write_acf_file(&steamapps_dir, metadata, &common_dir, &install_dir_name, &manifest_map, &depot_sizes)?;
+    acf_generator::write_shared_depots_acf(&steamapps_dir, metadata, &common_dir, &manifest_map)?;
 
     Ok(temp_dir)
 }
@@ -268,12 +283,80 @@ fn remove_existing_archive(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Computes per-depot file sizes from the staging directory structure.
+///
+/// This must run BEFORE the merge into steamapps/common/ because after the merge,
+/// all non-shared depot files share one folder and individual sizes are lost.
+///
+/// DepotDownloader layout: depots/<depot_id>/<manifest_id>/(files + .DepotDownloader/)
+/// We walk each depot's content (excluding .DepotDownloader/) to get its real size.
+fn compute_depot_sizes_from_staging(
+    staging_dir: &Path,
+    metadata: &JobMetadataFile,
+) -> HashMap<String, u64> {
+    let depots_dir = staging_dir.join("depots");
+    let mut sizes = HashMap::new();
+
+    for depot in &metadata.depots {
+        let depot_path = depots_dir.join(&depot.depot_id);
+        if !depot_path.is_dir() {
+            continue;
+        }
+
+        // Find the manifest subdirectory (should be only one)
+        let manifest_dir = match fs::read_dir(&depot_path) {
+            Ok(entries) => entries
+                .filter_map(|e| e.ok())
+                .find(|e| e.path().is_dir())
+                .map(|e| e.path()),
+            Err(_) => None,
+        };
+
+        if let Some(dir) = manifest_dir {
+            // Walk the content, excluding .DepotDownloader/
+            let size = calculate_dir_size_filtered(&dir, |path| {
+                !path.file_name().map(|n| n == ".DepotDownloader").unwrap_or(false)
+            });
+            sizes.insert(depot.depot_id.clone(), size);
+        }
+    }
+
+    sizes
+}
+
+/// Recursively calculates directory size with a filter predicate
+fn calculate_dir_size_filtered<F>(path: &Path, filter: F) -> u64
+where
+    F: Fn(&Path) -> bool + Copy,
+{
+    let mut total = 0u64;
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let entry_path = entry.path();
+            if !filter(&entry_path) {
+                continue;
+            }
+            if entry_path.is_dir() {
+                total += calculate_dir_size_filtered(&entry_path, filter);
+            } else if entry_path.is_file() {
+                total += fs::metadata(&entry_path).map(|m| m.len()).unwrap_or(0);
+            }
+        }
+    }
+    total
+}
+
 /// Transforms DepotDownloader's depots/ structure into Steam-compatible steamapps/common/ structure
 ///
 /// DepotDownloader creates: depots/<depotid>/<manifestid>/(files + .DepotDownloader/)
+///
 /// We need to create:
-/// - steamapps/common/<DepotName>/(files, excluding .DepotDownloader/)
+/// - steamapps/common/<installdir>/(all non-shared depot files merged flat, like Steam does)
+/// - steamapps/common/<SharedDepotName>/(shared depot files, e.g. "Steamworks Shared")
 /// - depotcache/*.manifest (collected from all .DepotDownloader/ directories)
+///
+/// All non-shared depots merge into a single installdir folder. Shared depots (redistributables,
+/// runtimes) each get their own sibling folder. This matches real Steam's on-disk layout.
 ///
 /// # Returns
 /// A map of depot_id → actual manifest_id (extracted from .manifest filenames)
@@ -281,7 +364,10 @@ fn transform_depots_to_steamapps(
     staging_dir: &Path,
     temp_dir: &Path,
     metadata: &JobMetadataFile,
+    install_dir_name: &str,
 ) -> Result<HashMap<String, String>, String> {
+    use crate::steam_api::is_shared_depot;
+
     let depots_dir = staging_dir.join("depots");
     let steamapps_common_dir = temp_dir.join("steamapps").join("common");
     let depotcache_dir = temp_dir.join("depotcache");
@@ -323,12 +409,6 @@ fn transform_depots_to_steamapps(
             continue;
         }
 
-        // Get depot name from metadata, or use fallback
-        let depot_name = depot_names
-            .get(&depot_id)
-            .cloned()
-            .unwrap_or_else(|| format!("depot_{}", depot_id));
-
         // Find the manifest subdirectory (should be only one)
         let manifest_dirs: Vec<_> = fs::read_dir(&depot_path)
             .map_err(|e| format!("Failed to read depot {}: {}", depot_id, e))?
@@ -368,9 +448,19 @@ fn transform_depots_to_steamapps(
             }
         }
 
-        // Copy manifest directory contents → steamapps/common/<DepotName>/
-        // Exclude .DepotDownloader/ directory
-        let target_dir = steamapps_common_dir.join(&depot_name);
+        // Determine target directory:
+        // - Shared depots (redistributables, runtimes) get their own named folder
+        // - All non-shared depots merge into the single installdir folder, matching Steam's layout
+        let target_dir = if is_shared_depot(&depot_id) {
+            let depot_name = depot_names
+                .get(&depot_id)
+                .cloned()
+                .unwrap_or_else(|| format!("depot_{}", depot_id));
+            steamapps_common_dir.join(&depot_name)
+        } else {
+            steamapps_common_dir.join(install_dir_name)
+        };
+
         copy_dir_recursive_filtered(&manifest_dir, &target_dir, |path| {
             !path.file_name().map(|n| n == ".DepotDownloader").unwrap_or(false)
         })?;
