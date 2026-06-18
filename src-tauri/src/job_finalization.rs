@@ -207,13 +207,13 @@ fn build_temp_output(
 
     // Transform depots/ → steamapps/common/ and collect manifests → depotcache/
     // Returns a map of depot_id → actual manifest_id (extracted from .manifest filenames)
-    let manifest_map = transform_depots_to_steamapps(staging_dir, &temp_dir, metadata, &install_dir_name)?;
+    let manifest_map = transform_depots_to_steamapps(staging_dir, &temp_dir, &install_dir_name)?;
 
     // Generate appmanifest_<appid>.acf and appmanifest_228980.acf (shared redistributables)
     let steamapps_dir = temp_dir.join("steamapps");
     let common_dir = steamapps_dir.join("common");
     acf_generator::write_acf_file(&steamapps_dir, metadata, &common_dir, &install_dir_name, &manifest_map, &depot_sizes)?;
-    acf_generator::write_shared_depots_acf(&steamapps_dir, metadata, &common_dir, &manifest_map)?;
+    acf_generator::write_shared_depots_acf(&steamapps_dir, metadata, &common_dir, &manifest_map, &depot_sizes)?;
 
     Ok(temp_dir)
 }
@@ -363,10 +363,9 @@ where
 fn transform_depots_to_steamapps(
     staging_dir: &Path,
     temp_dir: &Path,
-    metadata: &JobMetadataFile,
     install_dir_name: &str,
 ) -> Result<HashMap<String, String>, String> {
-    use crate::steam_api::is_shared_depot;
+    use crate::steam_api::{get_shared_depot_owner, is_shared_depot};
 
     let depots_dir = staging_dir.join("depots");
     let steamapps_common_dir = temp_dir.join("steamapps").join("common");
@@ -380,13 +379,6 @@ fn transform_depots_to_steamapps(
         .map_err(|e| format!("Failed to create steamapps/common/: {}", e))?;
     fs::create_dir_all(&depotcache_dir)
         .map_err(|e| format!("Failed to create depotcache/: {}", e))?;
-
-    // Create a lookup map for depot names from metadata
-    let depot_names: HashMap<String, String> = metadata
-        .depots
-        .iter()
-        .map(|d| (d.depot_id.clone(), d.depot_name.clone()))
-        .collect();
 
     // Iterate through each depot directory
     for entry in fs::read_dir(&depots_dir)
@@ -449,14 +441,19 @@ fn transform_depots_to_steamapps(
         }
 
         // Determine target directory:
-        // - Shared depots (redistributables, runtimes) get their own named folder
-        // - All non-shared depots merge into the single installdir folder, matching Steam's layout
+        // - Shared depots owned by the same app merge into that app's installdir
+        //   (e.g. all 228980-owned depots → "Steamworks Shared/", matching real Steam)
+        // - Non-shared depots merge into the game's installdir folder
         let target_dir = if is_shared_depot(&depot_id) {
-            let depot_name = depot_names
-                .get(&depot_id)
-                .cloned()
-                .unwrap_or_else(|| format!("depot_{}", depot_id));
-            steamapps_common_dir.join(&depot_name)
+            let owner = get_shared_depot_owner(&depot_id);
+            let shared_install_dir = match owner {
+                "228980" => "Steamworks Shared",
+                "1391110" => "SteamLinuxRuntime",
+                "1628350" => "SteamLinuxRuntime_soldier",
+                "1826330" => "SteamLinuxRuntime_sniper",
+                _ => "Steamworks Shared",
+            };
+            steamapps_common_dir.join(shared_install_dir)
         } else {
             steamapps_common_dir.join(install_dir_name)
         };

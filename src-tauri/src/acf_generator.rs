@@ -232,6 +232,7 @@ pub fn write_shared_depots_acf(
     metadata: &JobMetadataFile,
     common_dir: &Path,
     manifest_map: &HashMap<String, String>,
+    depot_sizes: &HashMap<String, u64>,
 ) -> Result<(), String> {
     // Collect only the shared depots present in this job
     let shared_depots: Vec<_> = metadata
@@ -246,10 +247,8 @@ pub fn write_shared_depots_acf(
         return Ok(());
     }
 
-    let size_on_disk = shared_depots
-        .iter()
-        .map(|d| calculate_size_on_disk(&common_dir.join(&d.depot_name)))
-        .sum::<u64>();
+    // Total size of the "Steamworks Shared" folder on disk
+    let size_on_disk = calculate_size_on_disk(&common_dir.join("Steamworks Shared"));
 
     let last_updated = metadata
         .build_datetime_utc
@@ -283,7 +282,7 @@ pub fn write_shared_depots_acf(
             .get(&depot.depot_id)
             .or(depot.manifest_id_used.as_ref())
             .unwrap_or(&depot.manifest_id);
-        let size = calculate_size_on_disk(&common_dir.join(&depot.depot_name));
+        let size = depot_sizes.get(&depot.depot_id).copied().unwrap_or(0);
 
         vdf.open_section(&depot.depot_id);
         vdf.key_value("manifest", manifest);
