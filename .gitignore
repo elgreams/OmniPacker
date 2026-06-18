@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local notes & scratch
+.planning/
+CLAUDE.md
+AGENTS.md
