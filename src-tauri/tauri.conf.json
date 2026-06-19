@@ -13,10 +13,11 @@
         "title": "OmniPacker",
         "width": 1140,
         "height": 760,
-        "minHeight": 760,
+        "minWidth": 570,
+        "minHeight": 380,
         "center": true,
-        "resizable": false,
-        "maximizable": false,
+        "resizable": true,
+        "maximizable": true,
         "windowClassname": "OmniPacker"
       }
     ],

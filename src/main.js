@@ -3452,4 +3452,20 @@ if (branchInput && !branchInput.value) {
   branchInput.value = "public";
 }
 
+// Scale the fixed-size UI to fit the window, preserving proportions.
+const DESIGN_WIDTH = 1140;
+const DESIGN_HEIGHT = 760;
+
+function applyUiScale() {
+  const scale = Math.min(
+    window.innerWidth / DESIGN_WIDTH,
+    window.innerHeight / DESIGN_HEIGHT,
+    1,
+  );
+  document.documentElement.style.setProperty("--ui-scale", String(scale));
+}
+
+window.addEventListener("resize", applyUiScale);
+applyUiScale();
+
 renderAll();
