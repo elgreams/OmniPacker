@@ -112,13 +112,15 @@ jobs:
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
           Copy-Item "$bundle/msi/*.msi"        "release-assets/OmniPacker-$version.${{ matrix.arch }}.Windows.Installer.msi"
           Copy-Item "$bundle/nsis/*-setup.exe" "release-assets/OmniPacker-$version.${{ matrix.arch }}.Windows.Setup.exe"
-          # Option C: extract the NSIS installer with 7-Zip (no execution) to build a faithful, arch-independent portable
+          # Option C: extract the NSIS installer with 7-Zip (no execution) to build a faithful, arch-independent portable.
+          # Extract into a named folder so the zip wraps a single top-level directory the user can drag out intact.
           $setup = (Get-ChildItem "$bundle/nsis/*-setup.exe").FullName
-          $portableDir = Join-Path $env:RUNNER_TEMP "portable-${{ matrix.arch }}"
+          $folderName = "OmniPacker-$version.${{ matrix.arch }}.Windows"
+          $portableDir = Join-Path $env:RUNNER_TEMP "portable-${{ matrix.arch }}/$folderName"
           & 7z x $setup "-o$portableDir" -y | Out-Null
           Remove-Item -Recurse -Force (Join-Path $portableDir '$PLUGINSDIR') -ErrorAction SilentlyContinue
           Remove-Item -Force (Join-Path $portableDir 'uninstall.exe') -ErrorAction SilentlyContinue
-          Compress-Archive -Path "$portableDir/*" -DestinationPath "release-assets/OmniPacker-$version.${{ matrix.arch }}.Windows.Portable.zip"
+          Compress-Archive -Path "$portableDir" -DestinationPath "release-assets/OmniPacker-$version.${{ matrix.arch }}.Windows.Portable.zip"
 
       - name: Upload release assets
         uses: actions/upload-artifact@v4
