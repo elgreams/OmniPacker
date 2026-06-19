@@ -28,6 +28,13 @@ pub struct DepotInfo {
     /// The manifest ID actually used during download (if different/discoverable)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub manifest_id_used: Option<String>,
+    /// The DLC appid this depot belongs to, if it is a DLC depot.
+    ///
+    /// Best-effort enrichment from api.steamcmd.net; absent when the depot is
+    /// base-game content, when the enrichment source is unavailable, or when the
+    /// depot simply declares no `dlcappid`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dlcappid: Option<String>,
 }
 
 /// Job metadata written to job.json in the staging directory
@@ -146,6 +153,7 @@ mod tests {
                     depot_name: "Test Game Content".to_string(),
                     manifest_id: "9876543210".to_string(),
                     manifest_id_used: None,
+                    dlcappid: None,
                 },
             ],
         );

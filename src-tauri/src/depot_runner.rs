@@ -254,6 +254,7 @@ fn derive_metadata_from_download(
                 depot_name: format!("depot_{}", depot_id), // Fallback name - will be enhanced below
                 manifest_id,
                 manifest_id_used: None,
+                dlcappid: None, // Best-effort enrichment below
             });
         }
     }
@@ -288,6 +289,18 @@ fn derive_metadata_from_download(
             // Priority 2: Use naming strategy (primary depot or shared depot)
             let is_primary = depot.depot_id == primary_depot_id;
             depot.depot_name = get_depot_name(&depot.depot_id, is_primary, &game_name);
+        }
+    }
+
+    // Best-effort: enrich depots with their dlcappid from api.steamcmd.net.
+    // This lets the generated .acf mark individual DLCs as installed. The source
+    // is community-run, so a failure simply leaves dlcappid as None (line omitted).
+    let dlcappids = crate::steamcmd_api::fetch_depot_dlcappids(&job.app_id);
+    if !dlcappids.is_empty() {
+        for depot in &mut depots {
+            if let Some(dlcappid) = dlcappids.get(&depot.depot_id) {
+                depot.dlcappid = Some(dlcappid.clone());
+            }
         }
     }
 

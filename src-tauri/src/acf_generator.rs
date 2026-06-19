@@ -162,6 +162,11 @@ fn generate_acf_content(
         vdf.open_section(&depot.depot_id);
         vdf.key_value("manifest", manifest);
         vdf.key_value("size", &depot_size.to_string());
+        // dlcappid marks this depot as belonging to a DLC so Steam shows the DLC
+        // as installed. Only emitted when enrichment supplied it (best-effort).
+        if let Some(dlcappid) = &depot.dlcappid {
+            vdf.key_value("dlcappid", dlcappid);
+        }
         vdf.close_section();
     }
     vdf.close_section();
@@ -234,6 +239,7 @@ pub fn write_shared_depots_acf(
     manifest_map: &HashMap<String, String>,
     depot_sizes: &HashMap<String, u64>,
     install_scripts: &HashMap<String, String>,
+    shared_buildid: &str,
 ) -> Result<(), String> {
     // Collect only the shared depots present in this job
     let shared_depots: Vec<_> = metadata
@@ -261,7 +267,6 @@ pub fn write_shared_depots_acf(
 
     vdf.key_value("appid", "228980");
     vdf.key_value("universe", "1");
-    vdf.key_value("LauncherPath", "0");
     vdf.key_value("name", "Steamworks Common Redistributables");
     vdf.key_value("StateFlags", "4");
     vdf.key_value("installdir", "Steamworks Shared");
@@ -269,8 +274,9 @@ pub fn write_shared_depots_acf(
     vdf.key_value("LastPlayed", "0");
     vdf.key_value("SizeOnDisk", &size_on_disk.to_string());
     vdf.key_value("StagingSize", "0");
-    // buildid is not meaningful for redistributables; use 0 as a neutral value
-    vdf.key_value("buildid", "0");
+    // buildid for the redistributables app, fetched from api.steamcmd.net when
+    // available. Falls back to "0" (a neutral value) when enrichment is down.
+    vdf.key_value("buildid", shared_buildid);
     vdf.key_value("LastOwner", "0");
     vdf.key_value("DownloadType", "0");
     vdf.key_value("AutoUpdateBehavior", "0");
@@ -345,6 +351,7 @@ mod tests {
                 depot_name: "Test Game Content".to_string(),
                 manifest_id: "6777399203159127119".to_string(),
                 manifest_id_used: None,
+                dlcappid: None,
             }],
         )
     }

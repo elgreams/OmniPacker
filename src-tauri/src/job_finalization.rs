@@ -214,7 +214,12 @@ fn build_temp_output(
     let steamapps_dir = temp_dir.join("steamapps");
     let common_dir = steamapps_dir.join("common");
     acf_generator::write_acf_file(&steamapps_dir, metadata, &common_dir, &install_dir_name, &manifest_map, &depot_sizes)?;
-    acf_generator::write_shared_depots_acf(&steamapps_dir, metadata, &common_dir, &manifest_map, &depot_sizes, &install_scripts)?;
+
+    // Best-effort: fetch the real public buildid for the redistributables app (228980)
+    // so its manifest matches what Steam records. Falls back to "0" on any failure.
+    let shared_buildid = crate::steamcmd_api::fetch_public_buildid("228980")
+        .unwrap_or_else(|| "0".to_string());
+    acf_generator::write_shared_depots_acf(&steamapps_dir, metadata, &common_dir, &manifest_map, &depot_sizes, &install_scripts, &shared_buildid)?;
 
     Ok(temp_dir)
 }

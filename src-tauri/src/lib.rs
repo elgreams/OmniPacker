@@ -10,6 +10,7 @@ mod output_conflict;
 mod output_dir;
 mod appimage_integration;
 mod steam_api;
+mod steamcmd_api;
 mod steamdb_api;
 mod template_metadata;
 mod template_renderer;
