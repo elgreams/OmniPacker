@@ -440,8 +440,13 @@ fn transform_depots_to_steamapps(
                 if manifest_path.is_file() && manifest_path.extension().map(|e| e == "manifest").unwrap_or(false) {
                     let manifest_filename = manifest_entry.file_name().to_string_lossy().to_string();
 
-                    // Extract manifest ID from filename (format: {manifest_id}.manifest)
-                    if let Some(manifest_id) = manifest_filename.strip_suffix(".manifest") {
+                    // Extract manifest ID from filename. DepotDownloader names these
+                    // {depot_id}_{manifest_id}.manifest, so strip both the extension and
+                    // the depot-id prefix to get the bare manifest ID Steam's .acf expects.
+                    if let Some(stem) = manifest_filename.strip_suffix(".manifest") {
+                        let manifest_id = stem
+                            .strip_prefix(&format!("{}_", depot_id))
+                            .unwrap_or(stem);
                         manifest_map.insert(depot_id.clone(), manifest_id.to_string());
                     }
 
