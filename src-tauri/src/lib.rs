@@ -43,6 +43,36 @@ fn debug_console_from_args() -> bool {
     std::env::args().any(|arg| arg == "--debug")
 }
 
+/// Design size the UI is laid out for. Matches the defaults in tauri.conf.json.
+const DESIGN_WIDTH: f64 = 1140.0;
+const DESIGN_HEIGHT: f64 = 760.0;
+
+/// On startup, shrink the window to fit the monitor's usable area if the
+/// design size is too tall/wide for the current display. The frontend's
+/// zoom-to-fit then scales the UI to whatever size the window ends up at.
+fn fit_window_to_monitor(window: &tauri::WebviewWindow) {
+    let Ok(Some(monitor)) = window.current_monitor() else {
+        return;
+    };
+
+    let scale = monitor.scale_factor();
+    let work = monitor.work_area();
+    let avail_w = work.size.width as f64 / scale;
+    let avail_h = work.size.height as f64 / scale;
+
+    // Leave a small margin so the window doesn't butt against screen edges.
+    let target_w = DESIGN_WIDTH.min(avail_w - 32.0);
+    let target_h = DESIGN_HEIGHT.min(avail_h - 64.0);
+
+    if target_w < DESIGN_WIDTH || target_h < DESIGN_HEIGHT {
+        let _ = window.set_size(tauri::LogicalSize::new(
+            target_w.max(570.0),
+            target_h.max(380.0),
+        ));
+        let _ = window.center();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let debug_console_flag = debug_console_from_args();
@@ -65,6 +95,9 @@ pub fn run() {
                 }
             }
             appimage_integration::maybe_install_appimage_integration(&app_handle);
+            if let Some(window) = app.get_webview_window("main") {
+                fit_window_to_monitor(&window);
+            }
             if let Some(icon) = load_window_icon() {
                 // Set icon on all windows
                 for (_, window) in app.webview_windows() {
