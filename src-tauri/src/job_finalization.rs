@@ -206,14 +206,15 @@ fn build_temp_output(
     let depot_sizes = compute_depot_sizes_from_staging(staging_dir, metadata);
 
     // Transform depots/ → steamapps/common/ and collect manifests → depotcache/
-    // Returns a map of depot_id → actual manifest_id (extracted from .manifest filenames)
-    let manifest_map = transform_depots_to_steamapps(staging_dir, &temp_dir, &install_dir_name)?;
+    // Returns a map of depot_id → manifest_id and a map of depot_id → install-script path
+    let (manifest_map, install_scripts) =
+        transform_depots_to_steamapps(staging_dir, &temp_dir, &install_dir_name)?;
 
     // Generate appmanifest_<appid>.acf and appmanifest_228980.acf (shared redistributables)
     let steamapps_dir = temp_dir.join("steamapps");
     let common_dir = steamapps_dir.join("common");
     acf_generator::write_acf_file(&steamapps_dir, metadata, &common_dir, &install_dir_name, &manifest_map, &depot_sizes)?;
-    acf_generator::write_shared_depots_acf(&steamapps_dir, metadata, &common_dir, &manifest_map, &depot_sizes)?;
+    acf_generator::write_shared_depots_acf(&steamapps_dir, metadata, &common_dir, &manifest_map, &depot_sizes, &install_scripts)?;
 
     Ok(temp_dir)
 }
@@ -359,12 +360,15 @@ where
 /// runtimes) each get their own sibling folder. This matches real Steam's on-disk layout.
 ///
 /// # Returns
-/// A map of depot_id → actual manifest_id (extracted from .manifest filenames)
+/// A tuple of:
+/// - map of depot_id → actual manifest_id (extracted from .manifest filenames)
+/// - map of depot_id → install-script path, relative to the depot's installdir, using
+///   Windows-style backslashes (only populated for depots that ship an `installscript.vdf`)
 fn transform_depots_to_steamapps(
     staging_dir: &Path,
     temp_dir: &Path,
     install_dir_name: &str,
-) -> Result<HashMap<String, String>, String> {
+) -> Result<(HashMap<String, String>, HashMap<String, String>), String> {
     use crate::steam_api::{get_shared_depot_owner, is_shared_depot};
 
     let depots_dir = staging_dir.join("depots");
@@ -373,6 +377,8 @@ fn transform_depots_to_steamapps(
 
     // Map of depot_id → actual manifest_id (extracted from .manifest filenames)
     let mut manifest_map: HashMap<String, String> = HashMap::new();
+    // Map of depot_id → install-script path (relative, Windows-style separators)
+    let mut install_scripts: HashMap<String, String> = HashMap::new();
 
     // Create directories
     fs::create_dir_all(&steamapps_common_dir)
@@ -458,12 +464,64 @@ fn transform_depots_to_steamapps(
             steamapps_common_dir.join(install_dir_name)
         };
 
+        // For shared depots, look for an installscript.vdf inside the depot's own content.
+        // Steam's InstallScripts section maps depot_id → path relative to the installdir.
+        // The script ships inside the depot payload, so we derive the mapping from the
+        // files themselves rather than from a hardcoded table.
+        if is_shared_depot(&depot_id) {
+            if let Some(rel) = find_install_script(&manifest_dir) {
+                install_scripts.insert(depot_id.clone(), rel);
+            }
+        }
+
         copy_dir_recursive_filtered(&manifest_dir, &target_dir, |path| {
             !path.file_name().map(|n| n == ".DepotDownloader").unwrap_or(false)
         })?;
     }
 
-    Ok(manifest_map)
+    Ok((manifest_map, install_scripts))
+}
+
+/// Searches a depot's content root for an `installscript.vdf` and returns its path
+/// relative to that root, using forward slashes. The ACF writer converts these to the
+/// escaped backslash form Steam's `InstallScripts` section expects. Returns `None` if
+/// no script is found.
+fn find_install_script(content_root: &Path) -> Option<String> {
+    scan_for_install_script(content_root, content_root)
+}
+
+/// Recursively walks `dir` looking for a file named `installscript.vdf`
+/// (case-insensitive), returning its path relative to `root` with forward slashes.
+fn scan_for_install_script(dir: &Path, root: &Path) -> Option<String> {
+    let entries = fs::read_dir(dir).ok()?;
+    let mut subdirs = Vec::new();
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.is_dir() {
+            // Skip DepotDownloader bookkeeping directories
+            if path.file_name().map(|n| n == ".DepotDownloader").unwrap_or(false) {
+                continue;
+            }
+            subdirs.push(path);
+        } else if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.eq_ignore_ascii_case("installscript.vdf"))
+            .unwrap_or(false)
+        {
+            return path
+                .strip_prefix(root)
+                .ok()
+                .map(|rel| rel.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    // Recurse into subdirectories only after checking files at this level
+    for sub in subdirs {
+        if let Some(found) = scan_for_install_script(&sub, root) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 /// Step 6: Atomic rename from temp to final
@@ -529,4 +587,63 @@ where
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+
+    /// Creates a unique temporary directory for a test and returns its path.
+    fn temp_dir(label: &str) -> PathBuf {
+        let mut dir = env::temp_dir();
+        let unique = format!(
+            "omnipacker_test_{}_{}",
+            label,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        dir.push(unique);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_find_install_script_nested() {
+        let root = temp_dir("find_script");
+        let script_dir = root.join("_CommonRedist").join("vcredist").join("2012");
+        fs::create_dir_all(&script_dir).unwrap();
+        fs::write(script_dir.join("installscript.vdf"), b"\"InstallScript\"\n{\n}\n").unwrap();
+
+        let result = find_install_script(&root);
+        assert_eq!(
+            result,
+            Some("_CommonRedist/vcredist/2012/installscript.vdf".to_string())
+        );
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn test_find_install_script_absent() {
+        let root = temp_dir("no_script");
+        fs::create_dir_all(root.join("data")).unwrap();
+        fs::write(root.join("data").join("game.bin"), b"x").unwrap();
+
+        assert_eq!(find_install_script(&root), None);
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn test_find_install_script_case_insensitive() {
+        let root = temp_dir("case_script");
+        fs::write(root.join("InstallScript.VDF"), b"x").unwrap();
+
+        assert_eq!(find_install_script(&root), Some("InstallScript.VDF".to_string()));
+
+        fs::remove_dir_all(&root).ok();
+    }
 }

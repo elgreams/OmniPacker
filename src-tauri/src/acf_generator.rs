@@ -233,6 +233,7 @@ pub fn write_shared_depots_acf(
     common_dir: &Path,
     manifest_map: &HashMap<String, String>,
     depot_sizes: &HashMap<String, u64>,
+    install_scripts: &HashMap<String, String>,
 ) -> Result<(), String> {
     // Collect only the shared depots present in this job
     let shared_depots: Vec<_> = metadata
@@ -291,14 +292,19 @@ pub fn write_shared_depots_acf(
     }
     vdf.close_section();
 
-    // Scan for installscript.vdf files in the redistributable directories
-    // Steam uses these to run installers (VCRedist, DirectX) on first launch.
-    // Paths use Windows-style backslashes as Steam expects them.
-    let install_scripts = collect_install_scripts(common_dir);
+    // InstallScripts: Steam runs these to install redistributables (VCRedist, DirectX,
+    // .NET) on first launch. The paths are derived from the depot content itself during
+    // finalization, so we emit exactly the scripts that were actually downloaded.
+    // Entries are sorted by depot_id for deterministic output.
     if !install_scripts.is_empty() {
+        let mut entries: Vec<_> = install_scripts.iter().collect();
+        entries.sort_by(|a, b| a.0.cmp(b.0));
         vdf.open_section("InstallScripts");
-        for (depot_id, script_path) in &install_scripts {
-            vdf.key_value(depot_id, script_path);
+        for (depot_id, script_path) in entries {
+            // Steam stores these paths with escaped backslash separators, e.g.
+            // "_CommonRedist\\vcredist\\2012\\installscript.vdf"
+            let windows_path = script_path.replace('/', r"\\");
+            vdf.key_value(depot_id, &windows_path);
         }
         vdf.close_section();
     }
@@ -315,30 +321,6 @@ pub fn write_shared_depots_acf(
         .map_err(|e| format!("Failed to write appmanifest_228980.acf: {}", e))?;
 
     Ok(())
-}
-
-/// Scans common/ subdirectories for installscript.vdf files and returns
-/// a map of depot_id → Windows-style relative path (for the InstallScripts section).
-///
-/// Steam's InstallScripts section uses Windows backslash paths even on non-Windows.
-/// The path is relative to the steamapps/common/<depot_name>/ directory.
-fn collect_install_scripts(common_dir: &Path) -> Vec<(String, String)> {
-    // Known install script locations: depot_id → (folder_name, relative_path)
-    let known_scripts: &[(&str, &str, &str)] = &[
-        ("228984", "Steamworks Shared", r"_CommonRedist\vcredist\2012\installscript.vdf"),
-        ("228990", "Steamworks Shared", r"_CommonRedist\DirectX\Jun2010\installscript.vdf"),
-        ("228983", "Steamworks Shared", r"_CommonRedist\DirectX\Jun2010\installscript.vdf"),
-    ];
-
-    let mut result = Vec::new();
-    for (depot_id, folder, rel_path) in known_scripts {
-        // Convert backslash path to forward slash for filesystem check
-        let fs_rel = rel_path.replace('\\', "/");
-        if common_dir.join(folder).join(&fs_rel).exists() {
-            result.push((depot_id.to_string(), rel_path.to_string()));
-        }
-    }
-    result
 }
 
 #[cfg(test)]
