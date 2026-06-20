@@ -192,12 +192,16 @@ fn build_temp_output(
 
     // Determine installdir: must match the on-disk folder name that all non-shared depot
     // files will be merged into. Prefer the primary depot's name from metadata; fall back
-    // to sanitized game name only if the primary depot isn't found.
+    // to the game name if the primary depot isn't found. Either way it must be sanitized:
+    // raw names can contain characters that are illegal in filesystem paths (e.g. the colon
+    // in "Fallout: New Vegas"), which is fine on Linux but fails on Windows (os error 267).
     let install_dir_name = metadata
         .depots
         .iter()
         .find(|d| d.depot_id == metadata.primary_depot_id)
         .map(|d| d.depot_name.clone())
+        .map(|name| sanitize_game_name(&name))
+        .filter(|name| !name.is_empty())
         .unwrap_or_else(|| sanitize_game_name(&metadata.game_name));
 
     // Compute per-depot sizes from the staging structure BEFORE the merge.
