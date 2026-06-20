@@ -25,6 +25,13 @@ impl DebugConsoleState {
     }
 }
 
+/// Check if debug console is enabled from an AppHandle (non-command context).
+#[allow(dead_code)]
+pub fn debug_console_enabled_static(app_handle: &tauri::AppHandle) -> bool {
+    use tauri::Manager;
+    app_handle.state::<DebugConsoleState>().enabled()
+}
+
 #[tauri::command]
 pub fn debug_console_enabled(state: State<DebugConsoleState>) -> bool {
     state.enabled

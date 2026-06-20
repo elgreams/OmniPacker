@@ -951,7 +951,19 @@ fn run_depotdownloader_worker(
     emit_log(
         &app_handle,
         "system",
+        &format!("DepotDownloader binary: {}", path.display()),
+        &job_id,
+    );
+    emit_log(
+        &app_handle,
+        "system",
         &format!("DepotDownloader args: {}", args.join(" ")),
+        &job_id,
+    );
+    emit_log(
+        &app_handle,
+        "system",
+        &format!("Working directory: {}", staging_dir.display()),
         &job_id,
     );
 
@@ -962,9 +974,15 @@ fn run_depotdownloader_worker(
     command.stderr(Stdio::piped());
     command.stdin(Stdio::piped());
 
-    // Hide console window on Windows
+    // Hide console window on Windows (skip when --debug is passed to allow
+    // diagnosing issues that only reproduce under CREATE_NO_WINDOW).
     #[cfg(windows)]
-    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    {
+        let debug_mode = crate::debug_console::debug_console_enabled_static(&app_handle);
+        if !debug_mode {
+            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+    }
 
     let mut child = match command.spawn() {
         Ok(child) => child,
@@ -1060,6 +1078,12 @@ fn run_depotdownloader_worker(
 
         if let Some(status) = status {
             let exit_code = status.code();
+            emit_log(
+                &app_handle_clone,
+                "system",
+                &format!("DepotDownloader exited with code: {:?}", exit_code),
+                &job_id_for_monitor,
+            );
 
             if exit_code == Some(0) {
                 // Success: Wait for log readers to finish, then derive metadata
@@ -1511,9 +1535,14 @@ fn run_preflight_before_download(
     command.stderr(Stdio::piped());
     command.stdin(Stdio::piped());
 
-    // Hide console window on Windows
+    // Hide console window on Windows (skip when --debug is passed)
     #[cfg(windows)]
-    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    {
+        let debug_mode = crate::debug_console::debug_console_enabled_static(&app_handle);
+        if !debug_mode {
+            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+    }
 
     let mut child = command
         .spawn()
