@@ -153,15 +153,18 @@
               </label>
               <input id="compression-password-input" type="text" disabled />
             </div>
+            <span class="settings-hint" data-i18n="settings.compressionPasswordHint">
+              Header encryption (-mhe=on) is enabled by default when a password is set.
+            </span>
           </div>
 
           <div class="settings-group">
             <label class="settings-label" for="custom-compression-args" data-i18n="settings.customCompressionArgsLabel">
               Custom 7-Zip arguments:
             </label>
-            <input id="custom-compression-args" type="text" placeholder="-mhe=on" />
+            <input id="custom-compression-args" type="text" placeholder="-mhe=off" />
             <span class="settings-hint" data-i18n="settings.customCompressionArgsHint">
-              Extra flags passed to 7-Zip (e.g. -mhe=on). Managed flags like -mx, -mmt, -md, -t, -p are not allowed.
+              Extra flags passed to 7-Zip. OmniPacker auto-tunes -mmt and -md for your system; overriding them may cause issues. Flags -t, -p, and -bsp are not allowed.
             </span>
           </div>
 

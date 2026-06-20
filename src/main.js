@@ -191,9 +191,11 @@ const translations = {
     "settings.compressionPasswordLabel": "Compression password:",
     "settings.compressionPasswordRequired":
       "Compression password cannot be enabled without setting a password.",
+    "settings.compressionPasswordHint":
+      "Header encryption (-mhe=on) is enabled by default when a password is set.",
     "settings.customCompressionArgsLabel": "Custom 7-Zip arguments:",
     "settings.customCompressionArgsHint":
-      "Extra flags passed to 7-Zip (e.g. -mhe=on). Managed flags like -mx, -mmt, -md, -t, -p are not allowed.",
+      "Extra flags passed to 7-Zip. OmniPacker auto-tunes -mmt and -md for your system; overriding them may cause issues. Flags -t, -p, and -bsp are not allowed.",
     "settings.defaultQrLogin": "Default to QR Login",
     "settings.deleteLogin": "Delete Saved Login Data",
     "settings.deleteNotImplemented": "This feature is not yet implemented.",
@@ -351,9 +353,11 @@ const translations = {
     "settings.compressionPasswordLabel": "Contraseña de compresión:",
     "settings.compressionPasswordRequired":
       "La contraseña de compresión no puede habilitarse sin establecer una contraseña.",
+    "settings.compressionPasswordHint":
+      "El cifrado de encabezados (-mhe=on) se activa por defecto con contraseña.",
     "settings.customCompressionArgsLabel": "Argumentos personalizados de 7-Zip:",
     "settings.customCompressionArgsHint":
-      "Flags adicionales para 7-Zip (ej. -mhe=on). No se permiten flags gestionados como -mx, -mmt, -md, -t, -p.",
+      "Flags adicionales para 7-Zip. OmniPacker ajusta -mmt y -md automáticamente; modificarlos puede causar problemas. Los flags -t, -p y -bsp no están permitidos.",
     "settings.defaultQrLogin": "Usar QR de forma predeterminada",
     "settings.deleteLogin": "Eliminar datos de inicio de sesión guardados",
     "settings.deleteNotImplemented": "Esta función aún no está implementada.",
@@ -513,9 +517,11 @@ const translations = {
     "settings.compressionPasswordLabel": "Mot de passe de compression :",
     "settings.compressionPasswordRequired":
       "Le mot de passe de compression ne peut pas être activé sans en définir un.",
+    "settings.compressionPasswordHint":
+      "Le chiffrement des en-têtes (-mhe=on) est activé par défaut avec un mot de passe.",
     "settings.customCompressionArgsLabel": "Arguments 7-Zip personnalisés :",
     "settings.customCompressionArgsHint":
-      "Flags supplémentaires pour 7-Zip (ex. -mhe=on). Les flags gérés comme -mx, -mmt, -md, -t, -p ne sont pas autorisés.",
+      "Flags supplémentaires pour 7-Zip. OmniPacker ajuste -mmt et -md automatiquement; les modifier peut causer des problèmes. Les flags -t, -p et -bsp ne sont pas autorisés.",
     "settings.defaultQrLogin": "Utiliser QR par défaut",
     "settings.deleteLogin": "Supprimer les identifiants enregistrés",
     "settings.deleteNotImplemented": "Cette fonctionnalité n'est pas encore implémentée.",
@@ -675,9 +681,11 @@ const translations = {
     "settings.compressionPasswordLabel": "Kompressionspasswort:",
     "settings.compressionPasswordRequired":
       "Kompressionspasswort kann nicht aktiviert werden, ohne ein Passwort festzulegen.",
+    "settings.compressionPasswordHint":
+      "Header-Verschlüsselung (-mhe=on) ist standardmäßig bei Passwort aktiviert.",
     "settings.customCompressionArgsLabel": "Benutzerdefinierte 7-Zip-Argumente:",
     "settings.customCompressionArgsHint":
-      "Zusätzliche Flags für 7-Zip (z.B. -mhe=on). Verwaltete Flags wie -mx, -mmt, -md, -t, -p sind nicht erlaubt.",
+      "Zusätzliche Flags für 7-Zip. OmniPacker passt -mmt und -md automatisch an; Änderungen können Probleme verursachen. Die Flags -t, -p und -bsp sind nicht erlaubt.",
     "settings.defaultQrLogin": "Standardmäßig QR-Login verwenden",
     "settings.deleteLogin": "Gespeicherte Login-Daten löschen",
     "settings.deleteNotImplemented": "Diese Funktion ist noch nicht implementiert.",
@@ -835,9 +843,11 @@ const translations = {
     "settings.compressionPasswordLabel": "Пароль для сжатия:",
     "settings.compressionPasswordRequired":
       "Нельзя включить пароль сжатия без заданного пароля.",
+    "settings.compressionPasswordHint":
+      "Шифрование заголовков (-mhe=on) включено по умолчанию при наличии пароля.",
     "settings.customCompressionArgsLabel": "Пользовательские аргументы 7-Zip:",
     "settings.customCompressionArgsHint":
-      "Дополнительные флаги для 7-Zip (напр. -mhe=on). Управляемые флаги (-mx, -mmt, -md, -t, -p) запрещены.",
+      "Дополнительные флаги для 7-Zip. OmniPacker автоматически настраивает -mmt и -md; их изменение может вызвать проблемы. Флаги -t, -p и -bsp запрещены.",
     "settings.defaultQrLogin": "QR-вход по умолчанию",
     "settings.deleteLogin": "Удалить сохраненные данные входа",
     "settings.deleteNotImplemented": "Эта функция еще не реализована.",

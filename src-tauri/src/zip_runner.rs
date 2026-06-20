@@ -286,7 +286,7 @@ pub fn run_7zip_blocking(
 /// Returns the matched prefix if blocked, or None if the arg is allowed.
 fn blocked_arg_prefix(arg: &str) -> Option<&'static str> {
     let lower = arg.to_ascii_lowercase();
-    const BLOCKED: &[&str] = &["-mx", "-mmt", "-md", "-t", "-p", "-bsp", "a"];
+    const BLOCKED: &[&str] = &["-t", "-p", "-bsp", "a"];
     for prefix in BLOCKED {
         if *prefix == "a" {
             if lower == "a" {
@@ -438,6 +438,7 @@ pub fn calculate_7z_compression_args(
     if let Some(password) = password {
         if !password.is_empty() {
             args.push(format!("-p{}", password));
+            args.push("-mhe=on".to_string()); // Encrypt file headers by default
         }
     }
 
