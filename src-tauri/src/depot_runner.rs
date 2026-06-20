@@ -1681,6 +1681,14 @@ fn spawn_log_reader(
         let mut pending: Vec<u8> = Vec::new();
         let mut prompt_emitted = false;
 
+        // Debug: write raw stream bytes to temp directory
+        let debug_log_path = std::env::temp_dir()
+            .join(format!("omnipacker-{stream_name}-debug.log"));
+        let debug_log_path = Some(debug_log_path);
+        let mut debug_file = debug_log_path.as_ref().and_then(|p| {
+            std::fs::File::create(p).ok()
+        });
+
         loop {
             let n = match reader.read(&mut buffer) {
                 Ok(n) => n,
@@ -1689,6 +1697,18 @@ fn spawn_log_reader(
 
             if n == 0 {
                 break; // EOF
+            }
+
+            // Write raw bytes to debug log
+            if let Some(ref mut f) = debug_file {
+                use std::io::Write;
+                let _ = write!(f, "[RAW {} bytes] ", n);
+                for &b in &buffer[..n] {
+                    let _ = write!(f, "{:02x} ", b);
+                }
+                let _ = writeln!(f);
+                let _ = writeln!(f, "[UTF8] {}", String::from_utf8_lossy(&buffer[..n]));
+                let _ = f.flush();
             }
 
             pending.extend_from_slice(&buffer[..n]);
@@ -1702,6 +1722,11 @@ fn spawn_log_reader(
                     line_bytes.pop();
                 }
                 let line = decode_stream_bytes(&line_bytes);
+                if let Some(ref mut f) = debug_file {
+                    use std::io::Write;
+                    let _ = writeln!(f, "[DECODED] {}", line);
+                    let _ = f.flush();
+                }
                 emit_log(&app_handle, &stream_name, &line, &job_id);
                 maybe_update_auth_username(&state_handle, &line, &job_id);
                 maybe_store_build_datetime(&app_handle, &line, &job_id);
