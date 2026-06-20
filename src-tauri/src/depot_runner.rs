@@ -225,6 +225,30 @@ fn map_os_selection(os: &str) -> (&'static str, &'static str) {
     }
 }
 
+/// Reads the real manifest ID for a depot from the on-disk manifest file.
+///
+/// DepotDownloader writes `{depot_id}_{manifest_id}.manifest` into the
+/// `.DepotDownloader/` subdirectory of each depot's manifest directory. The
+/// manifest directory itself is named after the build ID, so the filename is
+/// the only on-disk source of the true manifest ID. Returns `None` if no
+/// matching manifest file is found.
+fn read_manifest_id_from_disk(manifest_dir: &std::path::Path, depot_id: &str) -> Option<String> {
+    let dd_dir = manifest_dir.join(".DepotDownloader");
+    let prefix = format!("{depot_id}_");
+
+    for entry in std::fs::read_dir(&dd_dir).ok()?.flatten() {
+        let file_name = entry.file_name();
+        let name = file_name.to_string_lossy();
+        if let Some(stem) = name.strip_suffix(".manifest") {
+            if let Some(manifest_id) = stem.strip_prefix(&prefix) {
+                return Some(manifest_id.to_string());
+            }
+        }
+    }
+
+    None
+}
+
 /// Derives metadata from downloaded content (for QR auth case where preflight was skipped)
 fn derive_metadata_from_download(
     app_handle: &AppHandle,
@@ -271,12 +295,21 @@ fn derive_metadata_from_download(
             .collect();
 
         if let Some(manifest_entry) = manifest_dirs.first() {
-            let manifest_id = manifest_entry.file_name().to_string_lossy().to_string();
-
-            // Use first manifest as build ID if not set
+            // The manifest subdirectory is named after the build ID, not the
+            // manifest ID. Use it as the build ID...
+            let manifest_dir = manifest_entry.path();
             if build_id.is_empty() {
-                build_id = manifest_id.clone();
+                build_id = manifest_entry.file_name().to_string_lossy().to_string();
             }
+
+            // ...but read the real per-depot manifest ID from the on-disk
+            // {depot_id}_{manifest_id}.manifest file that DepotDownloader writes
+            // into the manifest dir's .DepotDownloader/ subdirectory. This is the
+            // authoritative source (the same one .acf generation uses) and does
+            // not depend on parsing DepotDownloader's stdout, which is unreliable
+            // for QR-auth downloads.
+            let manifest_id = read_manifest_id_from_disk(&manifest_dir, &depot_id)
+                .unwrap_or_else(|| build_id.clone());
 
             // Use first NON-SHARED depot as primary
             use crate::steam_api::is_shared_depot;
@@ -320,11 +353,15 @@ fn derive_metadata_from_download(
         .map(|(manifest_id, depot_id)| (depot_id.clone(), manifest_id.clone()))
         .collect();
 
-    // Fix manifest IDs: the directory name is the build ID, not the manifest ID.
-    // Use the real manifest IDs parsed from DepotDownloader's stdout.
+    // Fallback only: if reading the manifest ID from disk failed above (so it
+    // still holds the build ID), try the IDs parsed from DepotDownloader's
+    // stdout. The on-disk .manifest filename is the primary, more reliable
+    // source, so this never overwrites a value already recovered from disk.
     for depot in &mut depots {
-        if let Some(real_manifest_id) = depot_to_manifest.get(&depot.depot_id) {
-            depot.manifest_id = real_manifest_id.clone();
+        if depot.manifest_id == build_id {
+            if let Some(real_manifest_id) = depot_to_manifest.get(&depot.depot_id) {
+                depot.manifest_id = real_manifest_id.clone();
+            }
         }
     }
 
