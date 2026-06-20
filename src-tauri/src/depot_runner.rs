@@ -64,6 +64,8 @@ struct RunningJobState {
     auth_username: Option<String>,
     // Track depot names from preflight (depot_id -> depot_name)
     depot_names: std::collections::HashMap<String, String>,
+    // Track depot dlcappids from DepotDownloader output (depot_id -> dlcappid)
+    depot_dlcappids: std::collections::HashMap<String, String>,
     // Join handles for log reader threads (to ensure all logs are parsed before metadata derivation)
     log_reader_threads: Option<(thread::JoinHandle<()>, thread::JoinHandle<()>)>,
 }
@@ -87,6 +89,7 @@ impl DepotRunnerState {
                 last_depot_mentioned: None,
                 auth_username: None,
                 depot_names: std::collections::HashMap::new(),
+                depot_dlcappids: std::collections::HashMap::new(),
                 log_reader_threads: None,
             })),
         }
@@ -282,14 +285,14 @@ fn derive_metadata_from_download(
         return Err("No depots found in download".to_string());
     }
 
-    // Retrieve parsed manifest-to-depot mappings and depot names from download log output
-    let (parsed_manifest_to_depot, preflight_depot_names) = {
+    // Retrieve parsed manifest-to-depot mappings, depot names, and dlcappids from download log output
+    let (parsed_manifest_to_depot, preflight_depot_names, parsed_dlcappids) = {
         app_handle
             .state::<DepotRunnerState>()
             .inner
             .lock()
             .ok()
-            .map(|guard| (guard.manifest_to_depot.clone(), guard.depot_names.clone()))
+            .map(|guard| (guard.manifest_to_depot.clone(), guard.depot_names.clone(), guard.depot_dlcappids.clone()))
             .unwrap_or_default()
     };
 
@@ -319,14 +322,22 @@ fn derive_metadata_from_download(
         }
     }
 
-    // Best-effort: enrich depots with their dlcappid from api.steamcmd.net.
-    // This lets the generated .acf mark individual DLCs as installed. The source
-    // is community-run, so a failure simply leaves dlcappid as None (line omitted).
-    let dlcappids = crate::steamcmd_api::fetch_depot_dlcappids(&job.app_id);
-    if !dlcappids.is_empty() {
+    // Enrich depots with their dlcappid.
+    // Primary source: parsed from DepotDownloader stdout (authoritative, from Steam PICS data).
+    // Fallback: api.steamcmd.net (community-run mirror).
+    for depot in &mut depots {
+        if let Some(dlcappid) = parsed_dlcappids.get(&depot.depot_id) {
+            depot.dlcappid = Some(dlcappid.clone());
+        }
+    }
+    let any_missing_dlcappid = depots.iter().any(|d| d.dlcappid.is_none());
+    if any_missing_dlcappid {
+        let dlcappids = crate::steamcmd_api::fetch_depot_dlcappids(&job.app_id);
         for depot in &mut depots {
-            if let Some(dlcappid) = dlcappids.get(&depot.depot_id) {
-                depot.dlcappid = Some(dlcappid.clone());
+            if depot.dlcappid.is_none() {
+                if let Some(dlcappid) = dlcappids.get(&depot.depot_id) {
+                    depot.dlcappid = Some(dlcappid.clone());
+                }
             }
         }
     }
@@ -793,6 +804,7 @@ pub fn run_depotdownloader(
         guard.depot_timestamps.clear();
         guard.manifest_to_depot.clear();
         guard.manifest_timestamps.clear();
+        guard.depot_dlcappids.clear();
         guard.last_depot_mentioned = None;
         guard.auth_username = None;
 
@@ -1347,6 +1359,7 @@ pub fn cancel_depotdownloader(
     guard.depot_timestamps.clear();
     guard.manifest_to_depot.clear();
     guard.manifest_timestamps.clear();
+    guard.depot_dlcappids.clear();
     guard.last_depot_mentioned = None;
     guard.auth_username = None;
 
@@ -1435,6 +1448,7 @@ fn clear_runner_state(state_handle: &Arc<Mutex<RunningJobState>>, job_id: &str) 
             guard.build_datetime_utc = None;
             guard.depot_timestamps.clear();
             guard.manifest_to_depot.clear();
+            guard.depot_dlcappids.clear();
             guard.last_depot_mentioned = None;
             guard.auth_username = None;
         }
@@ -1814,6 +1828,7 @@ fn maybe_store_build_datetime(app_handle: &AppHandle, line: &str, job_id: &str) 
     static DEPOT_MANIFEST_RE: OnceLock<Regex> = OnceLock::new();
     static DEPOT_RE: OnceLock<Regex> = OnceLock::new();
     static DEPOT_NAME_RE: OnceLock<Regex> = OnceLock::new();
+    static DEPOT_DLCAPPID_RE: OnceLock<Regex> = OnceLock::new();
     static APPINFO_NAME_RE: OnceLock<Regex> = OnceLock::new();
     static MANIFEST_CREATIONTIME_RE: OnceLock<Regex> = OnceLock::new();
 
@@ -1825,6 +1840,9 @@ fn maybe_store_build_datetime(app_handle: &AppHandle, line: &str, job_id: &str) 
     });
     let depot_name = DEPOT_NAME_RE.get_or_init(|| {
         Regex::new(r#"[Dd]epot\s+(\d+)\s+"([^"]+)""#).unwrap()
+    });
+    let depot_dlcappid = DEPOT_DLCAPPID_RE.get_or_init(|| {
+        Regex::new(r"[Dd]epot\s+(\d+)\s+dlcappid\s+(\d+)").unwrap()
     });
     let appinfo_name = APPINFO_NAME_RE.get_or_init(|| {
         Regex::new(r#""name"\s+"([^"]+)""#).unwrap()
@@ -1846,6 +1864,18 @@ fn maybe_store_build_datetime(app_handle: &AppHandle, line: &str, job_id: &str) 
             ) {
                 eprintln!("[DOWNLOAD] Found depot name: {} -> {}", depot_id, name);
                 guard.depot_names.insert(depot_id.clone(), name);
+                guard.last_depot_mentioned = Some(depot_id);
+                return;
+            }
+        }
+
+        // Track depot dlcappids: Depot 12345 dlcappid 67890
+        if let Some(caps) = depot_dlcappid.captures(line) {
+            if let (Some(depot_id), Some(dlcappid)) = (
+                caps.get(1).map(|m| m.as_str().to_string()),
+                caps.get(2).map(|m| m.as_str().to_string()),
+            ) {
+                guard.depot_dlcappids.insert(depot_id.clone(), dlcappid);
                 guard.last_depot_mentioned = Some(depot_id);
                 return;
             }

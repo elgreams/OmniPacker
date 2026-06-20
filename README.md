@@ -8,7 +8,10 @@ deterministic and portable across platforms.
 
 OmniPacker is a community-driven project built for reliable, repeatable releases.
 
-Not affiliated with Valve, Steam, or DepotDownloader.
+Uses a [custom fork of DepotDownloader](https://github.com/elgreams/DepotDownloader)
+with enhanced metadata output (depot names, DLC app IDs).
+
+Not affiliated with Valve or Steam.
 
 ---
 
@@ -62,7 +65,7 @@ Use the "Open Output Folder" button to jump to the latest output location.
 - Frontend: Plain HTML / CSS / JavaScript (no framework).
 - Backend: Rust + Tauri commands.
 - Sidecars:
-  - DepotDownloader (stable pinned version)
+  - [DepotDownloader (custom fork)](https://github.com/elgreams/DepotDownloader) with depot name and dlcappid output
   - 7-Zip
 - Execution model: Sidecar binaries are launched and monitored by the Rust backend.
 
