@@ -47,7 +47,6 @@ fn debug_console_from_args() -> bool {
 /// Design size the UI is laid out for. Matches the defaults in tauri.conf.json.
 const DESIGN_WIDTH: f64 = 1140.0;
 const DESIGN_HEIGHT: f64 = 760.0;
-
 /// On startup, shrink the window to fit the monitor's usable area if the
 /// design size is too tall/wide for the current display. The frontend's
 /// zoom-to-fit then scales the UI to whatever size the window ends up at.

@@ -3494,6 +3494,8 @@ if (branchInput && !branchInput.value) {
 }
 
 // Scale the fixed-size UI to fit the window, preserving proportions.
+// Below the design size: use CSS transform to shrink proportionally.
+// At or above design size: let the layout flow naturally to fill the space.
 const DESIGN_WIDTH = 1140;
 const DESIGN_HEIGHT = 760;
 
@@ -3501,9 +3503,20 @@ function applyUiScale() {
   const scale = Math.min(
     window.innerWidth / DESIGN_WIDTH,
     window.innerHeight / DESIGN_HEIGHT,
-    1,
   );
-  document.documentElement.style.setProperty("--ui-scale", String(scale));
+
+  const body = document.body;
+  if (scale < 1) {
+    // Small window: fixed size + transform scale down
+    body.classList.add("fixed-layout");
+    body.classList.remove("fluid-layout");
+    document.documentElement.style.setProperty("--ui-scale", String(scale));
+  } else {
+    // Large window: flow naturally
+    body.classList.remove("fixed-layout");
+    body.classList.add("fluid-layout");
+    document.documentElement.style.setProperty("--ui-scale", "1");
+  }
 }
 
 window.addEventListener("resize", applyUiScale);

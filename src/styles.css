@@ -25,16 +25,23 @@ html {
 }
 
 body {
+  margin: 0;
+  background: #1d1c1c;
+  color: #e6e6e6;
+}
+
+body.fixed-layout {
   position: absolute;
   top: 50%;
   left: 50%;
   width: 1140px;
   height: 760px;
-  margin: 0;
-  background: #1d1c1c;
-  color: #e6e6e6;
   transform-origin: center center;
   transform: translate(-50%, -50%) scale(var(--ui-scale, 1));
+}
+
+body.fluid-layout {
+  height: 100%;
 }
 
 main.app {
