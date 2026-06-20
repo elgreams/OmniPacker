@@ -948,22 +948,29 @@ fn run_depotdownloader_worker(
         }
     };
 
-    emit_log(
-        &app_handle,
-        "system",
-        &format!("DepotDownloader binary: {}", path.display()),
-        &job_id,
-    );
+    // Open a main diagnostic log file for this DD run
+    let mut main_log = crate::debug_log::resolve_log_path(&app_handle, "dd-main")
+        .and_then(|p| std::fs::File::create(&p).ok());
+
+    macro_rules! log_main {
+        ($($arg:tt)*) => {
+            if let Some(ref mut f) = main_log {
+                use std::io::Write;
+                let _ = writeln!(f, $($arg)*);
+                let _ = f.flush();
+            }
+        };
+    }
+
+    log_main!("=== DD Main Log ===");
+    log_main!("Binary: {}", path.display());
+    log_main!("Args: {}", args.join(" "));
+    log_main!("Working dir: {}", staging_dir.display());
+
     emit_log(
         &app_handle,
         "system",
         &format!("DepotDownloader args: {}", args.join(" ")),
-        &job_id,
-    );
-    emit_log(
-        &app_handle,
-        "system",
-        &format!("Working directory: {}", staging_dir.display()),
         &job_id,
     );
 
@@ -979,14 +986,23 @@ fn run_depotdownloader_worker(
     #[cfg(windows)]
     {
         let debug_mode = crate::debug_console::debug_console_enabled_static(&app_handle);
-        if !debug_mode {
+        if debug_mode {
+            log_main!("DEBUG MODE: skipping CREATE_NO_WINDOW");
+        } else {
+            log_main!("Using CREATE_NO_WINDOW");
             command.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
     }
 
+    log_main!("Spawning...");
+
     let mut child = match command.spawn() {
-        Ok(child) => child,
+        Ok(child) => {
+            log_main!("Spawn OK, pid: {}", child.id());
+            child
+        }
         Err(err) => {
+            log_main!("Spawn FAILED: {err}");
             emit_status(&app_handle, "error", None, &job_id);
             let _ = cleanup_staging_dir(&app_handle, &job_id);
             clear_runner_state(&state_handle, &job_id);
@@ -1042,7 +1058,10 @@ fn run_depotdownloader_worker(
     let job_for_monitor = job.clone();
     let staging_dir_for_monitor = staging_dir.clone();
 
-    thread::spawn(move || loop {
+    thread::spawn(move || {
+    // Move main_log into monitor thread for exit code logging
+    let mut main_log = main_log;
+    loop {
         let status = {
             let mut lock = match state_handle.lock() {
                 Ok(lock) => lock,
@@ -1078,6 +1097,17 @@ fn run_depotdownloader_worker(
 
         if let Some(status) = status {
             let exit_code = status.code();
+            if let Some(ref mut f) = main_log {
+                use std::io::Write;
+                let _ = writeln!(f, "DD exited with code: {:?}", exit_code);
+                #[cfg(windows)]
+                {
+                    // On Windows, also log the raw exit status for NTSTATUS codes
+                    use std::os::windows::process::ExitStatusExt;
+                    let _ = writeln!(f, "DD raw exit status: 0x{:08X}", status.code().unwrap_or(0) as u32);
+                }
+                let _ = f.flush();
+            }
             emit_log(
                 &app_handle_clone,
                 "system",
@@ -1345,7 +1375,8 @@ fn run_depotdownloader_worker(
         }
 
         thread::sleep(Duration::from_millis(100));
-    });
+    } // end loop
+    }); // end thread::spawn
 }
 
 #[tauri::command]
