@@ -504,7 +504,7 @@ fn is_progress_line(line: &str) -> bool {
 
 fn spawn_log_reader(app_handle: AppHandle, stream: impl std::io::Read + Send + 'static, tag: &str) {
     let stream_name = tag.to_string();
-    let debug_log = crate::debug_log::DebugLogFile::new(&app_handle, &format!("7z-{tag}"));
+    let log_path = crate::debug_log::resolve_log_path(&app_handle, &format!("7z-{tag}"));
 
     thread::spawn(move || {
         let mut reader = BufReader::new(stream);
@@ -512,6 +512,8 @@ fn spawn_log_reader(app_handle: AppHandle, stream: impl std::io::Read + Send + '
         let mut current_line = String::new();
         let mut last_percent: Option<u8> = None;
         let mut last_was_cr = false;
+
+        let mut _log_file = log_path.and_then(|p| std::fs::File::create(&p).ok());
 
         loop {
             let n = match reader.read(&mut buffer) {
@@ -522,8 +524,6 @@ fn spawn_log_reader(app_handle: AppHandle, stream: impl std::io::Read + Send + '
             if n == 0 {
                 break;
             }
-
-            debug_log.write_raw("RAW", &buffer[..n]);
 
             let chunk = String::from_utf8_lossy(&buffer[..n]).to_string();
             for ch in chunk.chars() {

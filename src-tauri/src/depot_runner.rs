@@ -1673,27 +1673,53 @@ fn spawn_log_reader(
     const EMAIL_PROMPT: &str =
         "STEAM GUARD! Please enter the auth code sent to the email at";
 
-    let debug_log = crate::debug_log::DebugLogFile::new(&app_handle, &format!("dd-{tag}"));
+    // Resolve the log file path before spawning the thread
+    let log_path = crate::debug_log::resolve_log_path(&app_handle, &format!("dd-{tag}"));
 
     thread::spawn(move || {
-        use std::io::BufReader;
+        use std::io::{BufReader, Write};
 
         let mut reader = BufReader::new(stream);
         let mut buffer = [0u8; 1024];
         let mut pending: Vec<u8> = Vec::new();
         let mut prompt_emitted = false;
 
+        // Open log file inside the thread - no mutex, no struct
+        let mut log_file = log_path.and_then(|p| std::fs::File::create(&p).ok());
+        if let Some(ref mut f) = log_file {
+            let _ = writeln!(f, "=== Log started ===");
+            let _ = f.flush();
+        }
+
         loop {
             let n = match reader.read(&mut buffer) {
                 Ok(n) => n,
-                Err(_) => break,
+                Err(e) => {
+                    if let Some(ref mut f) = log_file {
+                        let _ = writeln!(f, "[ERROR] read failed: {e}");
+                        let _ = f.flush();
+                    }
+                    break;
+                }
             };
 
             if n == 0 {
+                if let Some(ref mut f) = log_file {
+                    let _ = writeln!(f, "[EOF]");
+                    let _ = f.flush();
+                }
                 break; // EOF
             }
 
-            debug_log.write_raw("RAW", &buffer[..n]);
+            if let Some(ref mut f) = log_file {
+                let _ = write!(f, "[RAW {} bytes] ", n);
+                for &b in &buffer[..n] {
+                    let _ = write!(f, "{:02x} ", b);
+                }
+                let _ = writeln!(f);
+                let _ = writeln!(f, "[UTF8] {}", String::from_utf8_lossy(&buffer[..n]));
+                let _ = f.flush();
+            }
 
             pending.extend_from_slice(&buffer[..n]);
 
@@ -1706,7 +1732,10 @@ fn spawn_log_reader(
                     line_bytes.pop();
                 }
                 let line = decode_stream_bytes(&line_bytes);
-                debug_log.write_line("DECODED", &line);
+                if let Some(ref mut f) = log_file {
+                    let _ = writeln!(f, "[DECODED] {line}");
+                    let _ = f.flush();
+                }
                 emit_log(&app_handle, &stream_name, &line, &job_id);
                 maybe_update_auth_username(&state_handle, &line, &job_id);
                 maybe_store_build_datetime(&app_handle, &line, &job_id);
@@ -1751,15 +1780,17 @@ fn spawn_preflight_reader(
     const EMAIL_PROMPT: &str =
         "STEAM GUARD! Please enter the auth code sent to the email at";
 
-    let debug_log = crate::debug_log::DebugLogFile::new(&app_handle, &format!("dd-preflight-{tag}"));
+    let log_path = crate::debug_log::resolve_log_path(&app_handle, &format!("dd-preflight-{tag}"));
 
     thread::spawn(move || {
-        use std::io::BufReader;
+        use std::io::{BufReader, Write};
 
         let mut reader = BufReader::new(stream);
         let mut buffer = [0u8; 1024];
         let mut pending: Vec<u8> = Vec::new();
         let mut prompt_emitted = false;
+
+        let mut log_file = log_path.and_then(|p| std::fs::File::create(&p).ok());
 
         loop {
             let n = match reader.read(&mut buffer) {
@@ -1771,7 +1802,10 @@ fn spawn_preflight_reader(
                 break; // EOF
             }
 
-            debug_log.write_raw("RAW", &buffer[..n]);
+            if let Some(ref mut f) = log_file {
+                let _ = writeln!(f, "[RAW {} bytes] {}", n, String::from_utf8_lossy(&buffer[..n]));
+                let _ = f.flush();
+            }
 
             pending.extend_from_slice(&buffer[..n]);
 
@@ -1784,7 +1818,6 @@ fn spawn_preflight_reader(
                     line_bytes.pop();
                 }
                 let line = decode_stream_bytes(&line_bytes);
-                debug_log.write_line("DECODED", &line);
                 if let Ok(mut guard) = output.lock() {
                     guard.push(line.clone());
                 }
