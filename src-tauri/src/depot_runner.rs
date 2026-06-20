@@ -905,24 +905,29 @@ fn run_depotdownloader_worker(
         }
     }
 
-    let state_wrapper = DepotRunnerState {
-        inner: state_handle.clone(),
-    };
-
-    if let Err(err) =
-        run_preflight_before_download(&app_handle, &state_wrapper, &job, &job_id, &staging_dir)
+    // Scope state_wrapper so its Drop impl runs before we spawn the real DD
+    // process. The Drop impl kills any child stored in the mutex, so if it
+    // outlives the preflight it would kill the main download.
     {
-        emit_log(
-            &app_handle,
-            "system",
-            &format!("Preflight failed: {err}"),
-            &job_id,
-        );
-        emit_status(&app_handle, "error", None, &job_id);
-        let _ = cleanup_staging_dir(&app_handle, &job_id);
-        clear_runner_state(&state_handle, &job_id);
-        return;
-    }
+        let state_wrapper = DepotRunnerState {
+            inner: state_handle.clone(),
+        };
+
+        if let Err(err) =
+            run_preflight_before_download(&app_handle, &state_wrapper, &job, &job_id, &staging_dir)
+        {
+            emit_log(
+                &app_handle,
+                "system",
+                &format!("Preflight failed: {err}"),
+                &job_id,
+            );
+            emit_status(&app_handle, "error", None, &job_id);
+            let _ = cleanup_staging_dir(&app_handle, &job_id);
+            clear_runner_state(&state_handle, &job_id);
+            return;
+        }
+    } // state_wrapper dropped here, before main DD spawn
 
     if let Some(username) = resolve_auth_username(&state_handle, &job, &job_id) {
         if let Err(err) = restore_auth_cache(&app_handle, &username, &staging_dir, &job_id) {
