@@ -282,17 +282,30 @@ fn derive_metadata_from_download(
         return Err("No depots found in download".to_string());
     }
 
-    // Enhance depot names using proper naming strategy
-    // First, try to get depot names from preflight (if available)
-    let preflight_depot_names = {
+    // Retrieve parsed manifest-to-depot mappings and depot names from download log output
+    let (parsed_manifest_to_depot, preflight_depot_names) = {
         app_handle
             .state::<DepotRunnerState>()
             .inner
             .lock()
             .ok()
-            .map(|guard| guard.depot_names.clone())
+            .map(|guard| (guard.manifest_to_depot.clone(), guard.depot_names.clone()))
             .unwrap_or_default()
     };
+
+    // Build reverse lookup: depot_id -> manifest_id from the parsed log output
+    let depot_to_manifest: std::collections::HashMap<String, String> = parsed_manifest_to_depot
+        .iter()
+        .map(|(manifest_id, depot_id)| (depot_id.clone(), manifest_id.clone()))
+        .collect();
+
+    // Fix manifest IDs: the directory name is the build ID, not the manifest ID.
+    // Use the real manifest IDs parsed from DepotDownloader's stdout.
+    for depot in &mut depots {
+        if let Some(real_manifest_id) = depot_to_manifest.get(&depot.depot_id) {
+            depot.manifest_id = real_manifest_id.clone();
+        }
+    }
 
     use crate::steam_api::get_depot_name;
     for depot in &mut depots {
