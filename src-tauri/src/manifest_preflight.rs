@@ -1,6 +1,7 @@
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use regex::Regex;
 
+use crate::debug_console::debug_eprintln;
 use crate::depot_runner::JobMetadata;
 
 /// Information about a depot extracted from DepotDownloader output
@@ -170,7 +171,7 @@ pub fn parse_preflight_output(lines: &[String]) -> PreflightResult {
         if let Some(caps) = depot_name_pattern.captures(line) {
             let depot_id = caps.get(1).map(|m| m.as_str().to_string()).unwrap();
             let depot_name = caps.get(2).map(|m| m.as_str().to_string()).unwrap();
-            eprintln!("[PREFLIGHT] Found depot name: {} -> {}", depot_id, depot_name);
+            debug_eprintln!("[PREFLIGHT] Found depot name: {} -> {}", depot_id, depot_name);
             depot_name_map.insert(depot_id.clone(), depot_name);
             last_depot_mentioned = Some(depot_id);
             continue;
@@ -190,7 +191,7 @@ pub fn parse_preflight_output(lines: &[String]) -> PreflightResult {
         if let Some(caps) = appinfo_name_pattern.captures(line) {
             if let Some(ref depot_id) = last_depot_mentioned {
                 let depot_name = caps.get(1).map(|m| m.as_str().to_string()).unwrap();
-                eprintln!("[PREFLIGHT] Found depot name (appinfo): {} -> {}", depot_id, depot_name);
+                debug_eprintln!("[PREFLIGHT] Found depot name (appinfo): {} -> {}", depot_id, depot_name);
                 depot_name_map.insert(depot_id.clone(), depot_name);
             }
         }

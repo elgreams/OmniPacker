@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crate::debug_console::debug_eprintln;
+
 /// Cache for SteamDB build dates to avoid repeated API calls
 static BUILD_DATE_CACHE: Mutex<Option<HashMap<String, DateTime<Utc>>>> = Mutex::new(None);
 
@@ -23,14 +25,14 @@ pub fn fetch_build_date(app_id: &str, build_id: Option<&str>) -> Result<DateTime
     if let Ok(guard) = BUILD_DATE_CACHE.lock() {
         if let Some(cache) = guard.as_ref() {
             if let Some(cached_date) = cache.get(&cache_key) {
-                eprintln!("[STEAMDB] Cache hit for {}", cache_key);
+                debug_eprintln!("[STEAMDB] Cache hit for {}", cache_key);
                 return Ok(*cached_date);
             }
         }
     }
 
     let url = format!("https://steamdb.info/api/PatchnotesRSS/?appid={}", app_id);
-    eprintln!("[STEAMDB] Fetching build date from: {}", url);
+    debug_eprintln!("[STEAMDB] Fetching build date from: {}", url);
 
     // Use reqwest blocking client for HTTP request
     let client = reqwest::blocking::Client::new();
@@ -118,7 +120,7 @@ fn parse_patchnotes_rss(xml: &str, target_build_id: Option<&str>) -> Result<Date
             // Example: "Mon, 24 Feb 2025 22:02:36 GMT"
             let parsed_date = parse_rfc2822_date(&pub_date_str)?;
 
-            eprintln!(
+            debug_eprintln!(
                 "[STEAMDB] Found build {} with date: {}",
                 item_build_id.as_deref().unwrap_or("unknown"),
                 parsed_date
@@ -130,7 +132,7 @@ fn parse_patchnotes_rss(xml: &str, target_build_id: Option<&str>) -> Result<Date
 
     // If we have a target build ID and didn't find it, try returning the latest
     if target_build_id.is_some() {
-        eprintln!("[STEAMDB] Target build not found, trying to get latest...");
+        debug_eprintln!("[STEAMDB] Target build not found, trying to get latest...");
         return parse_patchnotes_rss(xml, None);
     }
 

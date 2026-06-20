@@ -14,7 +14,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-use crate::debug_console::DebugConsoleState;
+use crate::debug_console::{debug_eprintln, DebugConsoleState};
+use crate::debug_log::{debug_log, DebugLog};
 use crate::job_finalization::{finalize_job, resolve_archive_path};
 use crate::job_metadata::{BuildIdSource, DepotInfo, JobMetadataFile};
 use crate::job_staging::{cleanup_staging_dir, create_staging_dir, generate_job_id};
@@ -375,11 +376,11 @@ fn derive_metadata_from_download(
     // PRIMARY: Query SteamDB for build release date
     let mut build_datetime_utc = match fetch_build_date(&job.app_id, Some(&build_id)) {
         Ok(timestamp) => {
-            eprintln!("[STEAMDB] Got build date for app {}: {}", job.app_id, timestamp);
+            debug_eprintln!("[STEAMDB] Got build date for app {}: {}", job.app_id, timestamp);
             Some(timestamp)
         }
         Err(err) => {
-            eprintln!("[STEAMDB] Failed to get build date: {}", err);
+            debug_eprintln!("[STEAMDB] Failed to get build date: {}", err);
             None
         }
     };
@@ -970,24 +971,13 @@ fn run_depotdownloader_worker(
         }
     };
 
-    // Open a main diagnostic log file for this DD run
-    let mut main_log = crate::debug_log::resolve_log_path(&app_handle, "dd-main")
-        .and_then(|p| std::fs::File::create(&p).ok());
+    // Open a main diagnostic log file for this DD run (no-op unless --debug)
+    let mut main_log = DebugLog::new(&app_handle, "dd-main");
 
-    macro_rules! log_main {
-        ($($arg:tt)*) => {
-            if let Some(ref mut f) = main_log {
-                use std::io::Write;
-                let _ = writeln!(f, $($arg)*);
-                let _ = f.flush();
-            }
-        };
-    }
-
-    log_main!("=== DD Main Log ===");
-    log_main!("Binary: {}", path.display());
-    log_main!("Args: {}", args.join(" "));
-    log_main!("Working dir: {}", staging_dir.display());
+    debug_log!(main_log, "=== DD Main Log ===");
+    debug_log!(main_log, "Binary: {}", path.display());
+    debug_log!(main_log, "Args: {}", args.join(" "));
+    debug_log!(main_log, "Working dir: {}", staging_dir.display());
 
     emit_log(
         &app_handle,
@@ -1009,22 +999,22 @@ fn run_depotdownloader_worker(
     {
         let debug_mode = crate::debug_console::debug_console_enabled_static(&app_handle);
         if debug_mode {
-            log_main!("DEBUG MODE: skipping CREATE_NO_WINDOW");
+            debug_log!(main_log, "DEBUG MODE: skipping CREATE_NO_WINDOW");
         } else {
-            log_main!("Using CREATE_NO_WINDOW");
+            debug_log!(main_log, "Using CREATE_NO_WINDOW");
             command.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
     }
 
-    log_main!("Spawning...");
+    debug_log!(main_log, "Spawning...");
 
     let mut child = match command.spawn() {
         Ok(child) => {
-            log_main!("Spawn OK, pid: {}", child.id());
+            debug_log!(main_log, "Spawn OK, pid: {}", child.id());
             child
         }
         Err(err) => {
-            log_main!("Spawn FAILED: {err}");
+            debug_log!(main_log, "Spawn FAILED: {err}");
             emit_status(&app_handle, "error", None, &job_id);
             let _ = cleanup_staging_dir(&app_handle, &job_id);
             clear_runner_state(&state_handle, &job_id);
@@ -1119,16 +1109,15 @@ fn run_depotdownloader_worker(
 
         if let Some(status) = status {
             let exit_code = status.code();
-            if let Some(ref mut f) = main_log {
-                use std::io::Write;
-                let _ = writeln!(f, "DD exited with code: {:?}", exit_code);
-                #[cfg(windows)]
-                {
-                    // On Windows, also log the raw exit status for NTSTATUS codes
-                    use std::os::windows::process::ExitStatusExt;
-                    let _ = writeln!(f, "DD raw exit status: 0x{:08X}", status.code().unwrap_or(0) as u32);
-                }
-                let _ = f.flush();
+            debug_log!(main_log, "DD exited with code: {:?}", exit_code);
+            #[cfg(windows)]
+            {
+                // On Windows, also log the raw exit status for NTSTATUS codes
+                debug_log!(
+                    main_log,
+                    "DD raw exit status: 0x{:08X}",
+                    status.code().unwrap_or(0) as u32
+                );
             }
             emit_log(
                 &app_handle_clone,
@@ -1755,52 +1744,39 @@ fn spawn_log_reader(
     const EMAIL_PROMPT: &str =
         "STEAM GUARD! Please enter the auth code sent to the email at";
 
-    // Resolve the log file path before spawning the thread
-    let log_path = crate::debug_log::resolve_log_path(&app_handle, &format!("dd-{tag}"));
+    // Open the diagnostic log before spawning the thread (no-op unless --debug)
+    let mut log = DebugLog::new(&app_handle, &format!("dd-{tag}"));
 
     thread::spawn(move || {
-        use std::io::{BufReader, Write};
+        use std::io::BufReader;
 
         let mut reader = BufReader::new(stream);
         let mut buffer = [0u8; 1024];
         let mut pending: Vec<u8> = Vec::new();
         let mut prompt_emitted = false;
 
-        // Open log file inside the thread - no mutex, no struct
-        let mut log_file = log_path.and_then(|p| std::fs::File::create(&p).ok());
-        if let Some(ref mut f) = log_file {
-            let _ = writeln!(f, "=== Log started ===");
-            let _ = f.flush();
-        }
+        debug_log!(log, "=== Log started ===");
 
         loop {
             let n = match reader.read(&mut buffer) {
                 Ok(n) => n,
                 Err(e) => {
-                    if let Some(ref mut f) = log_file {
-                        let _ = writeln!(f, "[ERROR] read failed: {e}");
-                        let _ = f.flush();
-                    }
+                    debug_log!(log, "[ERROR] read failed: {e}");
                     break;
                 }
             };
 
             if n == 0 {
-                if let Some(ref mut f) = log_file {
-                    let _ = writeln!(f, "[EOF]");
-                    let _ = f.flush();
-                }
+                debug_log!(log, "[EOF]");
                 break; // EOF
             }
 
-            if let Some(ref mut f) = log_file {
-                let _ = write!(f, "[RAW {} bytes] ", n);
-                for &b in &buffer[..n] {
-                    let _ = write!(f, "{:02x} ", b);
-                }
-                let _ = writeln!(f);
-                let _ = writeln!(f, "[UTF8] {}", String::from_utf8_lossy(&buffer[..n]));
-                let _ = f.flush();
+            if log.is_active() {
+                let chunk = &buffer[..n];
+                let hex: String =
+                    chunk.iter().map(|b| format!("{b:02x} ")).collect();
+                debug_log!(log, "[RAW {n} bytes] {hex}");
+                debug_log!(log, "[UTF8] {}", String::from_utf8_lossy(chunk));
             }
 
             pending.extend_from_slice(&buffer[..n]);
@@ -1814,10 +1790,7 @@ fn spawn_log_reader(
                     line_bytes.pop();
                 }
                 let line = decode_stream_bytes(&line_bytes);
-                if let Some(ref mut f) = log_file {
-                    let _ = writeln!(f, "[DECODED] {line}");
-                    let _ = f.flush();
-                }
+                debug_log!(log, "[DECODED] {line}");
                 emit_log(&app_handle, &stream_name, &line, &job_id);
                 maybe_update_auth_username(&state_handle, &line, &job_id);
                 maybe_store_build_datetime(&app_handle, &line, &job_id);
@@ -1862,17 +1835,15 @@ fn spawn_preflight_reader(
     const EMAIL_PROMPT: &str =
         "STEAM GUARD! Please enter the auth code sent to the email at";
 
-    let log_path = crate::debug_log::resolve_log_path(&app_handle, &format!("dd-preflight-{tag}"));
+    let mut log = DebugLog::new(&app_handle, &format!("dd-preflight-{tag}"));
 
     thread::spawn(move || {
-        use std::io::{BufReader, Write};
+        use std::io::BufReader;
 
         let mut reader = BufReader::new(stream);
         let mut buffer = [0u8; 1024];
         let mut pending: Vec<u8> = Vec::new();
         let mut prompt_emitted = false;
-
-        let mut log_file = log_path.and_then(|p| std::fs::File::create(&p).ok());
 
         loop {
             let n = match reader.read(&mut buffer) {
@@ -1884,10 +1855,7 @@ fn spawn_preflight_reader(
                 break; // EOF
             }
 
-            if let Some(ref mut f) = log_file {
-                let _ = writeln!(f, "[RAW {} bytes] {}", n, String::from_utf8_lossy(&buffer[..n]));
-                let _ = f.flush();
-            }
+            debug_log!(log, "[RAW {} bytes] {}", n, String::from_utf8_lossy(&buffer[..n]));
 
             pending.extend_from_slice(&buffer[..n]);
 
@@ -1987,7 +1955,7 @@ fn maybe_store_build_datetime(app_handle: &AppHandle, line: &str, job_id: &str) 
                 caps.get(1).map(|m| m.as_str().to_string()),
                 caps.get(2).map(|m| m.as_str().to_string()),
             ) {
-                eprintln!("[DOWNLOAD] Found depot name: {} -> {}", depot_id, name);
+                debug_eprintln!("[DOWNLOAD] Found depot name: {} -> {}", depot_id, name);
                 guard.depot_names.insert(depot_id.clone(), name);
                 guard.last_depot_mentioned = Some(depot_id);
                 return;
@@ -2022,7 +1990,7 @@ fn maybe_store_build_datetime(app_handle: &AppHandle, line: &str, job_id: &str) 
         if let Some(caps) = appinfo_name.captures(line) {
             if let Some(depot_id) = guard.last_depot_mentioned.clone() {
                 let name = caps.get(1).map(|m| m.as_str().to_string()).unwrap();
-                eprintln!("[DOWNLOAD] Found depot name (appinfo): {} -> {}", depot_id, name);
+                debug_eprintln!("[DOWNLOAD] Found depot name (appinfo): {} -> {}", depot_id, name);
                 guard.depot_names.insert(depot_id, name);
             }
         }

@@ -15,6 +15,8 @@ use std::sync::Mutex;
 
 use serde_json::Value;
 
+use crate::debug_console::debug_eprintln;
+
 /// Cache of appid → parsed appinfo, to avoid repeated network calls within a session.
 static APPINFO_CACHE: Mutex<Option<HashMap<String, Value>>> = Mutex::new(None);
 
@@ -33,7 +35,7 @@ fn fetch_appinfo(appid: &str) -> Result<Value, String> {
     }
 
     let url = format!("https://api.steamcmd.net/v1/info/{}", appid);
-    eprintln!("[STEAMCMD] Fetching appinfo from: {}", url);
+    debug_eprintln!("[STEAMCMD] Fetching appinfo from: {}", url);
 
     let client = reqwest::blocking::Client::new();
     let response = client
@@ -76,7 +78,7 @@ pub fn fetch_depot_dlcappids(appid: &str) -> HashMap<String, String> {
     let app_data = match fetch_appinfo(appid) {
         Ok(data) => data,
         Err(err) => {
-            eprintln!("[STEAMCMD] dlcappid lookup unavailable for {}: {}", appid, err);
+            debug_eprintln!("[STEAMCMD] dlcappid lookup unavailable for {}: {}", appid, err);
             return result;
         }
     };
@@ -107,7 +109,7 @@ pub fn fetch_public_buildid(appid: &str) -> Option<String> {
     let app_data = match fetch_appinfo(appid) {
         Ok(data) => data,
         Err(err) => {
-            eprintln!("[STEAMCMD] buildid lookup unavailable for {}: {}", appid, err);
+            debug_eprintln!("[STEAMCMD] buildid lookup unavailable for {}: {}", appid, err);
             return None;
         }
     };

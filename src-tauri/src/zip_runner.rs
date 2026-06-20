@@ -14,6 +14,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use std::os::windows::process::CommandExt;
 
 use crate::debug_console::DebugConsoleState;
+use crate::debug_log::{debug_log, DebugLog};
 
 #[derive(Clone)]
 pub struct SevenZipRunnerState {
@@ -504,7 +505,7 @@ fn is_progress_line(line: &str) -> bool {
 
 fn spawn_log_reader(app_handle: AppHandle, stream: impl std::io::Read + Send + 'static, tag: &str) {
     let stream_name = tag.to_string();
-    let log_path = crate::debug_log::resolve_log_path(&app_handle, &format!("7z-{tag}"));
+    let mut log = DebugLog::new(&app_handle, &format!("7z-{tag}"));
 
     thread::spawn(move || {
         let mut reader = BufReader::new(stream);
@@ -512,8 +513,6 @@ fn spawn_log_reader(app_handle: AppHandle, stream: impl std::io::Read + Send + '
         let mut current_line = String::new();
         let mut last_percent: Option<u8> = None;
         let mut last_was_cr = false;
-
-        let mut _log_file = log_path.and_then(|p| std::fs::File::create(&p).ok());
 
         loop {
             let n = match reader.read(&mut buffer) {
@@ -526,6 +525,7 @@ fn spawn_log_reader(app_handle: AppHandle, stream: impl std::io::Read + Send + '
             }
 
             let chunk = String::from_utf8_lossy(&buffer[..n]).to_string();
+            debug_log!(log, "[RAW {n} bytes] {chunk}");
             for ch in chunk.chars() {
                 match ch {
                     '\r' => {
