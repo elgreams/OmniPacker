@@ -2,9 +2,8 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
-use crate::debug_console::DebugConsoleState;
 use crate::output_dir::resolve_downloads_dir;
 
 /// Resolves the logs directory as a sibling of the downloads directory.
@@ -21,20 +20,12 @@ pub struct DebugLogFile {
 }
 
 impl DebugLogFile {
-    /// Create a new debug log file. Returns a no-op writer if --debug is not set.
+    /// Create a new debug log file. Always writes for now (diagnostics).
     pub fn new(app_handle: &AppHandle, name: &str) -> Self {
-        let enabled = app_handle
-            .try_state::<DebugConsoleState>()
-            .map(|s| s.enabled())
-            .unwrap_or(false);
-
-        if !enabled {
-            return Self { file: None };
-        }
-
         let file = resolve_logs_dir(app_handle).and_then(|dir| {
             let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
             let path = dir.join(format!("{name}-{timestamp}.log"));
+            eprintln!("[DEBUG_LOG] Creating log file: {}", path.display());
             File::create(&path).ok()
         });
 
