@@ -21,9 +21,9 @@ Not affiliated with Valve or Steam.
 
 | Platform | Download |
 |----------|----------|
-| Windows (Installer) | [Setup.exe](https://github.com/elgreams/OmniPacker/releases/download/v1.2.0/OmniPacker-1.2.0.x86_64.Windows.Setup.exe) |
-| Windows (Portable) | [Portable.zip](https://github.com/elgreams/OmniPacker/releases/download/v1.2.0/OmniPacker-1.2.0.x86_64.Windows.Portable.zip) |
-| Linux (AppImage) | [AppImage](https://github.com/elgreams/OmniPacker/releases/download/v1.2.0/OmniPacker-1.2.0.x86_64.Linux.AppImage) |
+| Windows (Installer) | [Setup.exe](https://github.com/elgreams/OmniPacker/releases/download/v1.2.0/OmniPacker-1.2.0.amd64.Windows.Setup.exe) |
+| Windows (Portable) | [Portable.zip](https://github.com/elgreams/OmniPacker/releases/download/v1.2.0/OmniPacker-1.2.0.amd64.Windows.Portable.zip) |
+| Linux (AppImage) | [AppImage](https://github.com/elgreams/OmniPacker/releases/download/v1.2.0/OmniPacker-1.2.0.amd64.Linux.AppImage) |
 | macOS (Apple Silicon) | [dmg](https://github.com/elgreams/OmniPacker/releases/download/v1.2.0/OmniPacker-1.2.0.arm64.MacOS.dmg) |
 
 Need ARM Linux, Windows on ARM, Intel Mac, or other package formats (deb, rpm)? See [all downloads and release notes](https://github.com/elgreams/OmniPacker/releases/latest).

@@ -21,7 +21,7 @@ jobs:
             build_script: ./scripts/build-linux-x64.sh
             artifact_name: linux-x64
             target: x86_64-unknown-linux-gnu
-            arch: x86_64
+            arch: amd64
           - platform: ubuntu-22.04-arm
             build_script: ./scripts/build-linux-arm64.sh
             artifact_name: linux-arm64
@@ -31,7 +31,7 @@ jobs:
             build_script: .\scripts\build-windows-x64.ps1
             artifact_name: windows-x64
             target: x86_64-pc-windows-msvc
-            arch: x86_64
+            arch: amd64
           - platform: windows-latest
             build_script: .\scripts\build-windows-arm64.ps1
             artifact_name: windows-arm64
@@ -41,7 +41,7 @@ jobs:
             build_script: ./scripts/build-macos-x64.sh
             artifact_name: macos-x64
             target: x86_64-apple-darwin
-            arch: x86_64
+            arch: amd64
           - platform: macos-latest
             build_script: ./scripts/build-macos-arm64.sh
             artifact_name: macos-arm64
