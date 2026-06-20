@@ -350,8 +350,8 @@ pub fn calculate_7z_compression_args(
         max_threads = ((max_threads * 2) / 3).max(1);
     }
 
-    let total_bytes = system.total_memory().saturating_mul(1024);
-    let available_bytes = system.available_memory().saturating_mul(1024);
+    let total_bytes = system.total_memory();
+    let available_bytes = system.available_memory();
     let used_bytes = total_bytes.saturating_sub(available_bytes);
     let used_ratio = if total_bytes > 0 {
         used_bytes as f64 / total_bytes as f64
@@ -409,7 +409,7 @@ pub fn calculate_7z_compression_args(
         } else {
             usable_bytes / threads as u64
         };
-        let max_dict_bytes = per_thread_budget / 3;
+        let max_dict_bytes = per_thread_budget / 12;
         let mut selected = None;
         for (size, label) in DICT_SIZES.iter().rev() {
             if *size <= max_dict_bytes {
