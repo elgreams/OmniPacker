@@ -138,6 +138,18 @@ pub fn run() {
             load_template_data,
             resolve_output_conflict
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Kill any spawned sidecar children (DepotDownloader, 7-Zip) before
+            // the app exits. On Windows, closing the window does not terminate
+            // child processes, and a compressing 7-Zip child writes to a file
+            // rather than the broken parent pipe, so it would otherwise keep
+            // running orphaned. This fires synchronously on exit, unlike the
+            // Drop impls which are not guaranteed to run on an abrupt teardown.
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                app_handle.state::<DepotRunnerState>().kill_child();
+                app_handle.state::<SevenZipRunnerState>().kill_child();
+            }
+        });
 }

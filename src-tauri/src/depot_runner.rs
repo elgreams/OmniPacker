@@ -97,8 +97,10 @@ impl DepotRunnerState {
     }
 }
 
-impl Drop for DepotRunnerState {
-    fn drop(&mut self) {
+impl DepotRunnerState {
+    /// Kills the running DepotDownloader child (if any) and clears it from state.
+    /// Safe to call when no child is running.
+    pub fn kill_child(&self) {
         if let Ok(mut guard) = self.inner.lock() {
             if let Some(ref mut child) = guard.child {
                 let _ = child.kill();
@@ -106,6 +108,12 @@ impl Drop for DepotRunnerState {
             }
             guard.child = None;
         }
+    }
+}
+
+impl Drop for DepotRunnerState {
+    fn drop(&mut self) {
+        self.kill_child();
     }
 }
 
