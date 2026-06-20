@@ -661,6 +661,9 @@ fn resolve_bundled_7zip_path(app_handle: &AppHandle) -> Result<PathBuf, String> 
         )
         .map_err(|e| format!("Failed to resolve 7-Zip sidecar: {}", e))?;
 
+    // Strip \\?\ prefix for consistency with depot_runner
+    let sidecar_path = crate::depot_runner::strip_extended_length_prefix(sidecar_path);
+
     if !sidecar_path.exists() {
         return Err(format!("7-Zip sidecar not found at {}", sidecar_path.display()));
     }

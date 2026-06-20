@@ -159,6 +159,20 @@ fn get_platform_subdir() -> &'static str {
     return "unknown";
 }
 
+/// Strip the Windows extended-length path prefix (`\\?\`) that Tauri's path
+/// resolver adds.  .NET executables crash when launched via `\\?\` paths
+/// (CLR exception 0xE0434352), so we must use plain paths for sidecars.
+pub(crate) fn strip_extended_length_prefix(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let s = path.to_string_lossy();
+        if let Some(stripped) = s.strip_prefix(r"\\?\") {
+            return PathBuf::from(stripped);
+        }
+    }
+    path
+}
+
 pub fn resolve_depotdownloader_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
     // Determine platform-specific binary name with extension
     #[cfg(windows)]
@@ -176,6 +190,9 @@ pub fn resolve_depotdownloader_path(app_handle: &AppHandle) -> Result<PathBuf, S
             tauri::path::BaseDirectory::Resource,
         )
         .map_err(|e| format!("Failed to resolve DepotDownloader sidecar: {}", e))?;
+
+    // Strip \\?\ prefix that breaks .NET CLR startup
+    let sidecar_path = strip_extended_length_prefix(sidecar_path);
 
     if !sidecar_path.exists() {
         return Err(format!(
