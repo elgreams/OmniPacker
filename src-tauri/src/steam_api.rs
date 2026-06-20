@@ -161,29 +161,47 @@ pub fn fetch_app_info(appid: &str) -> Result<SteamAppInfo, String> {
     })
 }
 
-/// Sanitizes a game name for use in output folder names
+/// Sanitizes a game name for use as a filesystem path segment (the top-level
+/// output folder and the `steamapps/common/<installdir>` folder).
 ///
 /// Rules (from ROADMAP.md):
 /// - Preserve casing from metadata
 /// - Replace spaces with `.`
-/// - Remove: apostrophes, colons, slashes (`/` and `\`), non-ASCII characters
+/// - Remove apostrophes and non-ASCII characters
 /// - Keep numeric characters
+///
+/// In addition to the ROADMAP rules, every character that is illegal in a
+/// Windows path segment is removed: `< > : " / \ | ? *` and control characters.
+/// The ROADMAP only called out colons and slashes, but the others fail the same
+/// way on Windows (`os error 267`), e.g. the `?` in "Who's Your Daddy?!", and a
+/// `"` would additionally break the quoted `installdir` value in the `.acf`.
 pub fn sanitize_game_name(name: &str) -> String {
-    name.chars()
+    /// Characters forbidden in a Windows path segment (besides control chars).
+    const WINDOWS_ILLEGAL: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+
+    let sanitized: String = name
+        .chars()
         .filter_map(|c| {
             if c == ' ' {
                 Some('.')
-            } else if c == '\'' || c == ':' || c == '/' || c == '\\' {
-                None
-            } else if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
-                Some(c)
-            } else if !c.is_ascii() {
+            } else if c == '\''
+                || !c.is_ascii()
+                || c.is_control()
+                || WINDOWS_ILLEGAL.contains(&c)
+            {
                 None
             } else {
                 Some(c)
             }
         })
-        .collect()
+        .collect();
+
+    // Windows silently strips trailing dots and spaces from path segments, which
+    // would make the created folder name diverge from the `.acf` installdir value
+    // (e.g. "S.T.A.L.K.E.R." -> folder "S.T.A.L.K.E.R" but installdir keeps the
+    // dot). Trim them so both sides stay consistent. Spaces are already mapped to
+    // dots above, so trimming dots is sufficient.
+    sanitized.trim_end_matches('.').to_string()
 }
 
 #[cfg(test)]
@@ -205,6 +223,27 @@ mod tests {
         assert_eq!(sanitize_game_name("Fallout: New Vegas"), "Fallout.New.Vegas");
         // Slashes removed
         assert_eq!(sanitize_game_name("Game/Name\\Test"), "GameNameTest");
+    }
+
+    #[test]
+    fn test_sanitize_game_name_windows_illegal_chars() {
+        // Every character illegal in a Windows path segment must be removed,
+        // not just the colon/slashes the ROADMAP originally called out.
+        assert_eq!(sanitize_game_name("Who's Your Daddy?!"), "Whos.Your.Daddy!");
+        assert_eq!(sanitize_game_name("Quake II <RTX>"), "Quake.II.RTX");
+        assert_eq!(sanitize_game_name("A|B*C?D"), "ABCD");
+        assert_eq!(sanitize_game_name("Say \"Hello\""), "Say.Hello");
+        // Control characters (e.g. tab) removed
+        assert_eq!(sanitize_game_name("Tab\tName"), "TabName");
+    }
+
+    #[test]
+    fn test_sanitize_game_name_trailing_dots_and_spaces() {
+        // Windows strips trailing dots/spaces from folder names; trim them so the
+        // created folder matches the .acf installdir value.
+        assert_eq!(sanitize_game_name("S.T.A.L.K.E.R."), "S.T.A.L.K.E.R");
+        assert_eq!(sanitize_game_name("Portal 2 "), "Portal.2");
+        assert_eq!(sanitize_game_name("Trailing..."), "Trailing");
     }
 
     #[test]
