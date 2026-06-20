@@ -1673,6 +1673,8 @@ fn spawn_log_reader(
     const EMAIL_PROMPT: &str =
         "STEAM GUARD! Please enter the auth code sent to the email at";
 
+    let debug_log = crate::debug_log::DebugLogFile::new(&app_handle, &format!("dd-{tag}"));
+
     thread::spawn(move || {
         use std::io::BufReader;
 
@@ -1680,14 +1682,6 @@ fn spawn_log_reader(
         let mut buffer = [0u8; 1024];
         let mut pending: Vec<u8> = Vec::new();
         let mut prompt_emitted = false;
-
-        // Debug: write raw stream bytes to temp directory
-        let debug_log_path = std::env::temp_dir()
-            .join(format!("omnipacker-{stream_name}-debug.log"));
-        let debug_log_path = Some(debug_log_path);
-        let mut debug_file = debug_log_path.as_ref().and_then(|p| {
-            std::fs::File::create(p).ok()
-        });
 
         loop {
             let n = match reader.read(&mut buffer) {
@@ -1699,17 +1693,7 @@ fn spawn_log_reader(
                 break; // EOF
             }
 
-            // Write raw bytes to debug log
-            if let Some(ref mut f) = debug_file {
-                use std::io::Write;
-                let _ = write!(f, "[RAW {} bytes] ", n);
-                for &b in &buffer[..n] {
-                    let _ = write!(f, "{:02x} ", b);
-                }
-                let _ = writeln!(f);
-                let _ = writeln!(f, "[UTF8] {}", String::from_utf8_lossy(&buffer[..n]));
-                let _ = f.flush();
-            }
+            debug_log.write_raw("RAW", &buffer[..n]);
 
             pending.extend_from_slice(&buffer[..n]);
 
@@ -1722,11 +1706,7 @@ fn spawn_log_reader(
                     line_bytes.pop();
                 }
                 let line = decode_stream_bytes(&line_bytes);
-                if let Some(ref mut f) = debug_file {
-                    use std::io::Write;
-                    let _ = writeln!(f, "[DECODED] {}", line);
-                    let _ = f.flush();
-                }
+                debug_log.write_line("DECODED", &line);
                 emit_log(&app_handle, &stream_name, &line, &job_id);
                 maybe_update_auth_username(&state_handle, &line, &job_id);
                 maybe_store_build_datetime(&app_handle, &line, &job_id);
@@ -1771,6 +1751,8 @@ fn spawn_preflight_reader(
     const EMAIL_PROMPT: &str =
         "STEAM GUARD! Please enter the auth code sent to the email at";
 
+    let debug_log = crate::debug_log::DebugLogFile::new(&app_handle, &format!("dd-preflight-{tag}"));
+
     thread::spawn(move || {
         use std::io::BufReader;
 
@@ -1789,6 +1771,8 @@ fn spawn_preflight_reader(
                 break; // EOF
             }
 
+            debug_log.write_raw("RAW", &buffer[..n]);
+
             pending.extend_from_slice(&buffer[..n]);
 
             while let Some(pos) = pending.iter().position(|&byte| byte == b'\n') {
@@ -1800,6 +1784,7 @@ fn spawn_preflight_reader(
                     line_bytes.pop();
                 }
                 let line = decode_stream_bytes(&line_bytes);
+                debug_log.write_line("DECODED", &line);
                 if let Ok(mut guard) = output.lock() {
                     guard.push(line.clone());
                 }

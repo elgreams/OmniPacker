@@ -1,5 +1,6 @@
 mod acf_generator;
-mod debug_console;
+pub(crate) mod debug_console;
+mod debug_log;
 mod depot_runner;
 mod job_finalization;
 mod job_metadata;
@@ -7,7 +8,7 @@ mod job_staging;
 mod login_store;
 mod manifest_preflight;
 mod output_conflict;
-mod output_dir;
+pub(crate) mod output_dir;
 mod appimage_integration;
 mod steam_api;
 mod steamcmd_api;
