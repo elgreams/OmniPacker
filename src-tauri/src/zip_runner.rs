@@ -28,6 +28,18 @@ impl SevenZipRunnerState {
     }
 }
 
+impl Drop for SevenZipRunnerState {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.child.lock() {
+            if let Some(ref mut child) = guard.as_mut() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            *guard = None;
+        }
+    }
+}
+
 #[derive(Clone, Serialize)]
 struct StatusPayload {
     status: String,
@@ -270,10 +282,43 @@ pub fn run_7zip_blocking(
 /// Calculates optimal 7-Zip compression arguments based on CPU cores.
 /// Prioritizes smallest file size with `-mx9` (ultra compression).
 /// Thread count is adapted to prevent system lockup on weak hardware.
+/// Checks whether a 7-Zip argument conflicts with flags managed by OmniPacker.
+/// Returns the matched prefix if blocked, or None if the arg is allowed.
+fn blocked_arg_prefix(arg: &str) -> Option<&'static str> {
+    let lower = arg.to_ascii_lowercase();
+    const BLOCKED: &[&str] = &["-mx", "-mmt", "-md", "-t", "-p", "-bsp", "a"];
+    for prefix in BLOCKED {
+        if *prefix == "a" {
+            if lower == "a" {
+                return Some(prefix);
+            }
+        } else if lower.starts_with(prefix) {
+            return Some(prefix);
+        }
+    }
+    None
+}
+
+/// Filters custom user arguments, removing any that conflict with managed flags.
+/// Returns (accepted_args, rejected_args).
+pub fn filter_custom_args(raw: &str) -> (Vec<String>, Vec<String>) {
+    let mut accepted = Vec::new();
+    let mut rejected = Vec::new();
+    for token in raw.split_whitespace() {
+        if blocked_arg_prefix(token).is_some() {
+            rejected.push(token.to_string());
+        } else {
+            accepted.push(token.to_string());
+        }
+    }
+    (accepted, rejected)
+}
+
 pub fn calculate_7z_compression_args(
     source_dir: &std::path::Path,
     output_archive: &std::path::Path,
     password: Option<&str>,
+    custom_args: Option<&str>,
 ) -> Vec<String> {
     const MB: u64 = 1024 * 1024;
     const GB: u64 = 1024 * MB;
@@ -394,6 +439,12 @@ pub fn calculate_7z_compression_args(
         if !password.is_empty() {
             args.push(format!("-p{}", password));
         }
+    }
+
+    // Splice in user-supplied custom arguments (already filtered by caller)
+    if let Some(custom) = custom_args {
+        let (accepted, _rejected) = filter_custom_args(custom);
+        args.extend(accepted);
     }
 
     args.push(output_archive.to_string_lossy().to_string()); // Archive path

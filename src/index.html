@@ -156,6 +156,16 @@
           </div>
 
           <div class="settings-group">
+            <label class="settings-label" for="custom-compression-args" data-i18n="settings.customCompressionArgsLabel">
+              Custom 7-Zip arguments:
+            </label>
+            <input id="custom-compression-args" type="text" placeholder="-mhe=on" />
+            <span class="settings-hint" data-i18n="settings.customCompressionArgsHint">
+              Extra flags passed to 7-Zip (e.g. -mhe=on). Managed flags like -mx, -mmt, -md, -t, -p are not allowed.
+            </span>
+          </div>
+
+          <div class="settings-group">
             <label class="settings-checkbox-row">
               <input id="default-qr-toggle" type="checkbox" />
               <span data-i18n="settings.defaultQrLogin">Default to QR Login</span>

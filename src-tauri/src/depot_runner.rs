@@ -25,7 +25,7 @@ use crate::steamdb_api::fetch_build_date;
 use crate::template_metadata::{TemplateMetadata, TemplateMetadataState};
 use crate::template_renderer::write_template_file;
 use crate::template_store::load_template_data_internal;
-use crate::zip_runner::{calculate_7z_compression_args, run_7zip_blocking, SevenZipRunnerState};
+use crate::zip_runner::{calculate_7z_compression_args, filter_custom_args, run_7zip_blocking, SevenZipRunnerState};
 
 /// Metadata for a download job, received from the frontend
 #[derive(Clone, Debug, Deserialize)]
@@ -46,6 +46,8 @@ pub struct JobMetadata {
     pub compression_password_enabled: bool,
     #[serde(default)]
     pub compression_password: String,
+    #[serde(default)]
+    pub custom_compression_args: String,
 }
 
 /// Internal state tracking the running job
@@ -87,6 +89,18 @@ impl DepotRunnerState {
                 depot_names: std::collections::HashMap::new(),
                 log_reader_threads: None,
             })),
+        }
+    }
+}
+
+impl Drop for DepotRunnerState {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.inner.lock() {
+            if let Some(ref mut child) = guard.child {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            guard.child = None;
         }
     }
 }
@@ -423,6 +437,7 @@ fn compress_output(
     output_path: &std::path::Path,
     job_id: &str,
     compression_password: Option<&str>,
+    custom_compression_args: Option<&str>,
 ) -> Result<std::path::PathBuf, String> {
     let archive_path = resolve_archive_path(output_path);
 
@@ -434,7 +449,7 @@ fn compress_output(
     }
 
     let args =
-        calculate_7z_compression_args(output_path, &archive_path, compression_password);
+        calculate_7z_compression_args(output_path, &archive_path, compression_password, custom_compression_args);
     let redacted_args = redact_7z_password_args(&args);
 
     emit_log(
@@ -1144,11 +1159,31 @@ fn run_depotdownloader_worker(
                                     None
                                 };
 
+                            let custom_args_raw = job_for_monitor.custom_compression_args.as_str();
+                            let custom_compression_args = if custom_args_raw.trim().is_empty() {
+                                None
+                            } else {
+                                let (_accepted, rejected) = filter_custom_args(custom_args_raw);
+                                if !rejected.is_empty() {
+                                    emit_log(
+                                        &app_handle_clone,
+                                        "system",
+                                        &format!(
+                                            "Blocked managed 7-Zip flags from custom args: {}",
+                                            rejected.join(", ")
+                                        ),
+                                        &job_id_for_monitor,
+                                    );
+                                }
+                                Some(custom_args_raw)
+                            };
+
                             match compress_output(
                                 &app_handle_clone,
                                 &output_path,
                                 &job_id_for_monitor,
                                 compression_password,
+                                custom_compression_args,
                             ) {
                                 Ok(archive_path) => {
                                     emit_log(

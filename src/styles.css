@@ -578,6 +578,12 @@ html[lang="de"] .add-to-queue {
   width: 100%;
 }
 
+.settings-hint {
+  font-size: 11px;
+  color: #999;
+  line-height: 1.3;
+}
+
 .settings-delete-login-button {
   padding: 8px 12px;
   background: #4a1a1a;
