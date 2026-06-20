@@ -2039,6 +2039,13 @@ fn parse_dotnet_datetime_str(text: &str, pattern: &Regex) -> Option<DateTime<Utc
 
 #[cfg(windows)]
 fn decode_console_bytes(buf: &[u8]) -> String {
+    // .NET pipes stdout as UTF-8 when there is no console attached.
+    // Try UTF-8 first; only fall back to the Windows console codepage
+    // for legacy programs that emit OEM-encoded bytes.
+    if let Ok(s) = std::str::from_utf8(buf) {
+        return s.to_string();
+    }
+
     use codepage_strings::Coding;
     use windows_sys::Win32::{Globalization::GetOEMCP, System::Console::GetConsoleOutputCP};
 
