@@ -3,7 +3,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
     sync::{Arc, Mutex, OnceLock},
     thread,
@@ -20,7 +20,6 @@ use crate::job_finalization::{finalize_job, resolve_archive_path};
 use crate::job_metadata::{BuildIdSource, DepotInfo, JobMetadataFile};
 use crate::job_staging::{cleanup_staging_dir, create_staging_dir, generate_job_id};
 use crate::manifest_preflight::{build_preflight_args, parse_preflight_output};
-use crate::output_dir::resolve_downloads_dir;
 use crate::steam_api::fetch_app_info;
 use crate::steamdb_api::fetch_build_date;
 use crate::template_metadata::{TemplateMetadata, TemplateMetadataState};
@@ -62,7 +61,6 @@ struct RunningJobState {
     manifest_to_depot: std::collections::HashMap<String, String>,
     manifest_timestamps: std::collections::HashMap<String, DateTime<Utc>>, // manifest_id -> timestamp
     last_depot_mentioned: Option<String>,
-    auth_username: Option<String>,
     // Track depot names from preflight (depot_id -> depot_name)
     depot_names: std::collections::HashMap<String, String>,
     // Track depot dlcappids from DepotDownloader output (depot_id -> dlcappid)
@@ -88,7 +86,6 @@ impl DepotRunnerState {
                 manifest_to_depot: std::collections::HashMap::new(),
                 manifest_timestamps: std::collections::HashMap::new(),
                 last_depot_mentioned: None,
-                auth_username: None,
                 depot_names: std::collections::HashMap::new(),
                 depot_dlcappids: std::collections::HashMap::new(),
                 log_reader_threads: None,
@@ -634,219 +631,6 @@ fn build_depot_args(job: &JobMetadata) -> Result<Vec<String>, String> {
     Ok(args)
 }
 
-const AUTH_ROOT_FILES: &[&str] = &["sentry.bin", "config.json", "loginusers.vdf"];
-const AUTH_CONFIG_FILES: &[&str] = &["loginusers.vdf", "config.vdf", "config.json", "sentry.bin"];
-
-fn is_auth_root_file(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    if lower.starts_with("ssfn") {
-        return true;
-    }
-    AUTH_ROOT_FILES.iter().any(|entry| lower == *entry)
-}
-
-fn is_auth_config_file(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    AUTH_CONFIG_FILES.iter().any(|entry| lower == *entry)
-}
-
-fn collect_auth_files(root: &Path) -> Result<Vec<(PathBuf, PathBuf)>, String> {
-    let mut files = Vec::new();
-
-    for entry in std::fs::read_dir(root)
-        .map_err(|e| format!("Failed to read auth source directory: {}", e))?
-    {
-        let entry = entry.map_err(|e| format!("Failed to read auth source entry: {}", e))?;
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let file_name = match path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map(|name| name.to_string())
-        {
-            Some(name) => name,
-            None => continue,
-        };
-        if is_auth_root_file(&file_name) {
-            files.push((path, PathBuf::from(file_name)));
-        }
-    }
-
-    let config_dir = root.join("config");
-    if config_dir.is_dir() {
-        for entry in std::fs::read_dir(&config_dir)
-            .map_err(|e| format!("Failed to read auth config directory: {}", e))?
-        {
-            let entry = entry.map_err(|e| format!("Failed to read auth config entry: {}", e))?;
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            let file_name = match path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .map(|name| name.to_string())
-            {
-                Some(name) => name,
-                None => continue,
-            };
-            if is_auth_config_file(&file_name) {
-                files.push((path, PathBuf::from("config").join(file_name)));
-            }
-        }
-    }
-
-    Ok(files)
-}
-
-fn sanitize_auth_username(username: &str) -> String {
-    let mut sanitized = String::with_capacity(username.len());
-    for ch in username.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' {
-            sanitized.push(ch);
-        } else {
-            sanitized.push('_');
-        }
-    }
-    let trimmed = sanitized.trim_matches('_');
-    if trimmed.is_empty() {
-        "user".to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
-fn resolve_auth_cache_dir(app_handle: &AppHandle, username: &str) -> Result<PathBuf, String> {
-    let downloads_dir = resolve_downloads_dir(app_handle)?;
-    let auth_root = downloads_dir.join(".auth");
-    Ok(auth_root.join(sanitize_auth_username(username)))
-}
-
-fn restore_auth_cache(
-    app_handle: &AppHandle,
-    username: &str,
-    target_dir: &Path,
-    job_id: &str,
-) -> Result<(), String> {
-    if username.trim().is_empty() {
-        return Ok(());
-    }
-    let cache_dir = resolve_auth_cache_dir(app_handle, username)?;
-    if !cache_dir.exists() {
-        return Ok(());
-    }
-
-    let entries = collect_auth_files(&cache_dir)?;
-    let mut restored = Vec::new();
-    for (path, rel_path) in entries {
-        let dest = target_dir.join(&rel_path);
-        if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create auth restore directory: {}", e))?;
-        }
-        std::fs::copy(&path, &dest)
-            .map_err(|e| format!("Failed to restore auth cache file: {}", e))?;
-        restored.push(rel_path.to_string_lossy().replace('\\', "/"));
-    }
-
-    if !restored.is_empty() {
-        emit_log(
-            app_handle,
-            "system",
-            &format!("Auth cache restored: {}", restored.join(", ")),
-            job_id,
-        );
-    }
-
-    Ok(())
-}
-
-fn persist_auth_cache(
-    app_handle: &AppHandle,
-    username: &str,
-    source_dir: &Path,
-    job_id: &str,
-) -> Result<(), String> {
-    if username.trim().is_empty() {
-        return Ok(());
-    }
-    let cache_dir = resolve_auth_cache_dir(app_handle, username)?;
-    std::fs::create_dir_all(&cache_dir)
-        .map_err(|e| format!("Failed to create auth cache directory: {}", e))?;
-
-    let entries = collect_auth_files(source_dir)?;
-    let mut persisted = Vec::new();
-    for (path, rel_path) in entries {
-        let dest = cache_dir.join(&rel_path);
-        if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create auth cache directory: {}", e))?;
-        }
-        std::fs::copy(&path, &dest)
-            .map_err(|e| format!("Failed to persist auth cache file: {}", e))?;
-        persisted.push(rel_path.to_string_lossy().replace('\\', "/"));
-    }
-
-    if !persisted.is_empty() {
-        emit_log(
-            app_handle,
-            "system",
-            &format!("Auth cache saved: {}", persisted.join(", ")),
-            job_id,
-        );
-    }
-
-    Ok(())
-}
-
-fn resolve_auth_username(
-    state_handle: &Arc<Mutex<RunningJobState>>,
-    job: &JobMetadata,
-    job_id: &str,
-) -> Option<String> {
-    if let Ok(guard) = state_handle.lock() {
-        if guard.job_id.as_deref() == Some(job_id) {
-            if let Some(username) = guard.auth_username.as_ref() {
-                if !username.trim().is_empty() {
-                    return Some(username.clone());
-                }
-            }
-        }
-    }
-
-    let trimmed = job.username.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
-fn maybe_update_auth_username(
-    state_handle: &Arc<Mutex<RunningJobState>>,
-    line: &str,
-    job_id: &str,
-) {
-    if !line.contains("-remember-password") || !line.contains("-username") {
-        return;
-    }
-
-    let mut parts = line.split_whitespace();
-    while let Some(part) = parts.next() {
-        if part == "-username" {
-            if let Some(username) = parts.next() {
-                if let Ok(mut guard) = state_handle.lock() {
-                    if guard.job_id.as_deref() == Some(job_id) {
-                        guard.auth_username = Some(username.to_string());
-                    }
-                }
-            }
-            break;
-        }
-    }
-}
 
 #[tauri::command]
 pub fn run_depotdownloader(
@@ -869,7 +653,6 @@ pub fn run_depotdownloader(
         guard.manifest_timestamps.clear();
         guard.depot_dlcappids.clear();
         guard.last_depot_mentioned = None;
-        guard.auth_username = None;
 
         let job_id = generate_job_id();
         guard.job_id = Some(job_id.clone());
@@ -929,28 +712,6 @@ fn run_depotdownloader_worker(
         &job_id,
     );
 
-    if let Ok(mut guard) = state_handle.lock() {
-        if guard.job_id.as_deref() == Some(&job_id) {
-            let trimmed = job.username.trim();
-            guard.auth_username = if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            };
-        }
-    }
-
-    if let Some(username) = resolve_auth_username(&state_handle, &job, &job_id) {
-        if let Err(err) = restore_auth_cache(&app_handle, &username, &staging_dir, &job_id) {
-            emit_log(
-                &app_handle,
-                "system",
-                &format!("Failed to restore auth cache: {}", err),
-                &job_id,
-            );
-        }
-    }
-
     // Scope state_wrapper so its Drop impl runs before we spawn the real DD
     // process. The Drop impl kills any child stored in the mutex, so if it
     // outlives the preflight it would kill the main download.
@@ -974,17 +735,6 @@ fn run_depotdownloader_worker(
             return;
         }
     } // state_wrapper dropped here, before main DD spawn
-
-    if let Some(username) = resolve_auth_username(&state_handle, &job, &job_id) {
-        if let Err(err) = restore_auth_cache(&app_handle, &username, &staging_dir, &job_id) {
-            emit_log(
-                &app_handle,
-                "system",
-                &format!("Failed to restore auth cache: {}", err),
-                &job_id,
-            );
-        }
-    }
 
     if let Ok(guard) = state_handle.lock() {
         if guard.job_id.is_none() {
@@ -1091,7 +841,6 @@ fn run_depotdownloader_worker(
             stream,
             "stdout",
             job_id.clone(),
-            state_handle.clone(),
         )
     });
     let stderr_handle = stderr.map(|stream| {
@@ -1100,7 +849,6 @@ fn run_depotdownloader_worker(
             stream,
             "stderr",
             job_id.clone(),
-            state_handle.clone(),
         )
     });
 
@@ -1187,24 +935,6 @@ fn run_depotdownloader_worker(
                         drop(guard); // Release lock before joining
                         let _ = stdout_h.join();
                         let _ = stderr_h.join();
-                    }
-                }
-
-                if let Some(username) =
-                    resolve_auth_username(&state_handle, &job_for_monitor, &job_id_for_monitor)
-                {
-                    if let Err(err) = persist_auth_cache(
-                        &app_handle_clone,
-                        &username,
-                        &staging_dir_for_monitor,
-                        &job_id_for_monitor,
-                    ) {
-                        emit_log(
-                            &app_handle_clone,
-                            "system",
-                            &format!("Failed to persist auth cache: {}", err),
-                            &job_id_for_monitor,
-                        );
                     }
                 }
 
@@ -1406,23 +1136,6 @@ fn run_depotdownloader_worker(
                     "Job failed. Cleaning up staging directory.",
                     &job_id_for_monitor,
                 );
-                if let Some(username) =
-                    resolve_auth_username(&state_handle, &job_for_monitor, &job_id_for_monitor)
-                {
-                    if let Err(err) = persist_auth_cache(
-                        &app_handle_clone,
-                        &username,
-                        &staging_dir_for_monitor,
-                        &job_id_for_monitor,
-                    ) {
-                        emit_log(
-                            &app_handle_clone,
-                            "system",
-                            &format!("Failed to persist auth cache: {}", err),
-                            &job_id_for_monitor,
-                        );
-                    }
-                }
                 let _ = cleanup_staging_dir(&app_handle_clone, &job_id_for_monitor);
             }
 
@@ -1472,7 +1185,6 @@ pub fn cancel_depotdownloader(
     guard.manifest_timestamps.clear();
     guard.depot_dlcappids.clear();
     guard.last_depot_mentioned = None;
-    guard.auth_username = None;
 
     emit_status(&app_handle, "exited", status.code(), &job_id);
 
@@ -1561,7 +1273,6 @@ fn clear_runner_state(state_handle: &Arc<Mutex<RunningJobState>>, job_id: &str) 
             guard.manifest_to_depot.clear();
             guard.depot_dlcappids.clear();
             guard.last_depot_mentioned = None;
-            guard.auth_username = None;
         }
     }
 }
@@ -1589,19 +1300,6 @@ fn run_preflight_before_download(
             job_id,
         );
         return Ok(());
-    }
-
-    if !job.username.trim().is_empty() {
-        if let Err(err) =
-            restore_auth_cache(app_handle, &job.username, &preflight_dir, job_id)
-        {
-            emit_log(
-                app_handle,
-                "system",
-                &format!("Failed to restore auth cache: {}", err),
-                job_id,
-            );
-        }
     }
 
     let dd_path = resolve_depotdownloader_path(app_handle)?;
@@ -1761,19 +1459,6 @@ fn run_preflight_before_download(
         }
     }
 
-    if !job.username.trim().is_empty() {
-        if let Err(err) =
-            persist_auth_cache(app_handle, &job.username, &preflight_dir, job_id)
-        {
-            emit_log(
-                app_handle,
-                "system",
-                &format!("Failed to persist auth cache: {}", err),
-                job_id,
-            );
-        }
-    }
-
     let _ = fs::remove_dir_all(&preflight_dir);
     Ok(())
 }
@@ -1783,7 +1468,6 @@ fn spawn_log_reader(
     stream: impl std::io::Read + Send + 'static,
     tag: &str,
     job_id: String,
-    state_handle: Arc<Mutex<RunningJobState>>,
 ) -> thread::JoinHandle<()> {
     let stream_name = tag.to_string();
     const EMAIL_PROMPT: &str =
@@ -1837,7 +1521,6 @@ fn spawn_log_reader(
                 let line = decode_stream_bytes(&line_bytes);
                 debug_log!(log, "[DECODED] {line}");
                 emit_log(&app_handle, &stream_name, &line, &job_id);
-                maybe_update_auth_username(&state_handle, &line, &job_id);
                 maybe_store_build_datetime(&app_handle, &line, &job_id);
             }
 
@@ -1852,7 +1535,6 @@ fn spawn_log_reader(
                 }
                 let line = decode_stream_bytes(&line_bytes);
                 emit_log(&app_handle, &stream_name, &line, &job_id);
-                maybe_update_auth_username(&state_handle, &line, &job_id);
                 prompt_emitted = true;
             }
         }
@@ -1864,7 +1546,6 @@ fn spawn_log_reader(
             }
             let line = decode_stream_bytes(&line_bytes);
             emit_log(&app_handle, &stream_name, &line, &job_id);
-            maybe_update_auth_username(&state_handle, &line, &job_id);
         }
     })
 }
