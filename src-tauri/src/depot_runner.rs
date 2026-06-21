@@ -37,9 +37,11 @@ pub struct JobMetadata {
     pub username: String,
     pub password: String,
     pub qr_enabled: bool,
+    /// Set by the frontend on the final queue job when the user did not opt into
+    /// saving credentials. Forwards `-clear-token` so DepotDownloader wipes the
+    /// stored login token from disk after the queue completes.
     #[serde(default)]
-    #[allow(dead_code)] // Forwarded from the frontend; reserved for future auth caching control.
-    pub remember_password: bool,
+    pub clear_token: bool,
     #[serde(default)]
     pub skip_compression: bool,
     #[serde(default)]
@@ -625,6 +627,14 @@ fn build_depot_args(job: &JobMetadata) -> Result<Vec<String>, String> {
             args.push(job.password.clone());
         }
         args.push("-remember-password".to_string());
+
+        // Set by the frontend on the final queue job when the user did not opt
+        // into saving credentials. DepotDownloader still reuses the stored token
+        // for every job in the queue (no Steam Guard re-prompt), then wipes it
+        // from disk after this last job so nothing persists past the queue.
+        if job.clear_token {
+            args.push("-clear-token".to_string());
+        }
     }
     // If both username and password are empty, attempt anonymous download (no auth args)
 
