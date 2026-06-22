@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# npm config with machine-specific global prefix
+.npmrc
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
