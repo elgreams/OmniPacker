@@ -2009,6 +2009,15 @@ const getNextQueuedJob = () => {
 const hasQueuedJobs = () =>
   jobState.order.some((jobId) => jobState.jobs.get(jobId)?.status === "queued");
 
+// True when `job` is the only job still queued, i.e. the final job of the
+// current queue run. Used to decide when DepotDownloader should wipe its stored
+// login token (see clearToken in buildJobMetadata).
+const isLastQueuedJob = (job) =>
+  !jobState.order.some((jobId) => {
+    const other = jobState.jobs.get(jobId);
+    return other && other !== job && other.status === "queued";
+  });
+
 const isRunningJob = (jobId) => jobState.runningJobId === jobId;
 const isQueueRunning = () => Boolean(jobState.runningJobId);
 
@@ -2802,7 +2811,10 @@ const buildJobMetadata = (job) => ({
   username: job.username || "",
   password: job.password || "",
   qrEnabled: Boolean(job.qrEnabled),
-  rememberPassword: Boolean(job.rememberPassword),
+  // When the user has not saved their credentials, tell DepotDownloader to wipe
+  // its stored login token after the final queue job. Earlier jobs still reuse
+  // the token (no Steam Guard re-prompt mid-queue); nothing persists afterward.
+  clearToken: !hasSavedLogin() && isLastQueuedJob(job),
   skipCompression: settingsState.skipCompression,
   compressionPasswordEnabled: settingsState.compressionPasswordEnabled,
   compressionPassword: settingsState.compressionPassword,
