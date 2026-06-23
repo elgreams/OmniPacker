@@ -56,6 +56,9 @@ pub fn build_preflight_args(job: &JobMetadata) -> Result<Vec<String>, String> {
     // Authentication
     if job.qr_enabled {
         args.push("-qr".to_string());
+        // Persist the QR session so the token can be reused on later queued jobs.
+        // See build_depot_args for the full rationale.
+        args.push("-remember-password".to_string());
     } else if !job.username.is_empty() {
         args.push("-username".to_string());
         args.push(job.username.clone());

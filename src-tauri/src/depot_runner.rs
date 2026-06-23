@@ -618,6 +618,18 @@ fn build_depot_args(job: &JobMetadata) -> Result<Vec<String>, String> {
 
     if job.qr_enabled {
         args.push("-qr".to_string());
+        // -remember-password makes DepotDownloader open a PERSISTENT QR session
+        // (IsPersistentSession=true) and store the resulting refresh token, so
+        // subsequent queued jobs can reuse the login without re-scanning the QR.
+        // Without it the QR token is non-persistent and Steam rejects its reuse
+        // on job 2+ with AccessDenied.
+        args.push("-remember-password".to_string());
+
+        // Wipe the stored token after the final queue job when the user did not
+        // opt into saving credentials (see the username branch below).
+        if job.clear_token {
+            args.push("-clear-token".to_string());
+        }
     } else if !job.username.is_empty() {
         args.push("-username".to_string());
         args.push(job.username.clone());
