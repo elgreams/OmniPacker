@@ -496,9 +496,6 @@ html[lang="de"] .add-to-queue {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  /* Promote to its own compositing layer so WebKitGTK paints the solid box
-     on the first frame instead of briefly showing the backdrop through it. */
-  transform: translateZ(0);
 }
 
 .modal-title {
@@ -781,6 +778,26 @@ html[lang="de"] .add-to-queue {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Force a classic in-layer scrollbar. WebKitGTK's default overlay scrollbar
+   renders in a separate layer that paints over fixed modals, so it bled
+   through the Reset-to-Default dialog until a repaint cleared it. */
+.template-blocks::-webkit-scrollbar {
+  width: 12px;
+}
+
+.template-blocks::-webkit-scrollbar-track {
+  background: #111011;
+}
+
+.template-blocks::-webkit-scrollbar-thumb {
+  background: #505050;
+  border: 2px solid #111011;
+}
+
+.template-blocks::-webkit-scrollbar-thumb:hover {
+  background: #6a6a6a;
 }
 
 .template-block {
