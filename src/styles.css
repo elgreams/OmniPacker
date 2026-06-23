@@ -536,6 +536,17 @@ html[lang="de"] .add-to-queue {
   min-height: 200px;
 }
 
+/* Footer: version pinned bottom-left, Close button on the right. */
+.settings-actions {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-version {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
 .settings-content {
   display: flex;
   flex-direction: column;

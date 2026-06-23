@@ -102,6 +102,12 @@ pub fn check_for_update(app_handle: AppHandle) -> Result<UpdateInfo, String> {
     })
 }
 
+/// Returns the running app version (e.g. "1.3.0") for display in the UI.
+#[tauri::command]
+pub fn get_app_version(app_handle: AppHandle) -> String {
+    app_handle.package_info().version.to_string()
+}
+
 /// Opens an external URL (the release page) in the user's default browser.
 #[tauri::command]
 pub fn open_external_url(app_handle: AppHandle, url: String) -> Result<(), String> {

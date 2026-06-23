@@ -29,7 +29,7 @@ use output_conflict::{resolve_output_conflict, OutputConflictState};
 use output_dir::{get_output_folder, open_output_folder};
 use template_metadata::{get_template_metadata, TemplateMetadataState};
 use template_store::{load_template_data, save_template_data};
-use update_check::{check_for_update, open_external_url};
+use update_check::{check_for_update, get_app_version, open_external_url};
 use zip_runner::{cancel_7zip, run_7zip, SevenZipRunnerState};
 use std::sync::OnceLock;
 use tauri::Manager;
@@ -140,6 +140,7 @@ pub fn run() {
             load_template_data,
             resolve_output_conflict,
             check_for_update,
+            get_app_version,
             open_external_url
         ])
         .build(tauri::generate_context!())
