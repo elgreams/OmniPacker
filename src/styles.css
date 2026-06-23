@@ -735,6 +735,16 @@ html[lang="de"] .add-to-queue {
   line-height: 1.4;
 }
 
+.template-mode-confirm-modal {
+  width: min(460px, 92vw);
+  height: auto;
+}
+
+.template-mode-confirm-message {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .output-conflict-modal {
   width: min(520px, 92vw);
   height: auto;
