@@ -247,7 +247,6 @@ fn map_os_selection(os: &str) -> (&'static str, &'static str) {
         "Linux x86" => ("linux", "32"),
         "Linux" => ("linux", "64"),
         "macOS x64" => ("macos", "64"),
-        "macOS arm64" => ("macos", "arm64"),
         "macOS" => ("macos", "64"),
         _ => ("windows", "64"),
     }
@@ -513,7 +512,6 @@ fn map_platform_for_output(os: &str) -> String {
         "Windows x86" => "Win32".to_string(),
         "Linux" => "Linux64".to_string(),
         "macOS x64" => "MacOS64".to_string(),
-        "macOS arm64" => "MacOSArm64".to_string(),
         "macOS" => "MacOS64".to_string(),
         _ => "Win64".to_string(),
     }
@@ -2109,7 +2107,6 @@ mod tests {
         assert_eq!(map_os_selection("Linux x64"), ("linux", "64"));
         assert_eq!(map_os_selection("Linux x86"), ("linux", "32"));
         assert_eq!(map_os_selection("macOS x64"), ("macos", "64"));
-        assert_eq!(map_os_selection("macOS arm64"), ("macos", "arm64"));
     }
 
     #[test]

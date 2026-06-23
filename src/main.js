@@ -112,9 +112,9 @@ const settingsState = {
   compressionPassword: "",
   customCompressionArgs: "",
   splitArchiveEnabled: false,
-  // 7-Zip volume size token, e.g. "100m", "1g", "4700m". When the preset is
+  // 7-Zip volume size token, e.g. "1g", "4700m", "10g". When the preset is
   // "custom", this is derived from splitCustomSize + splitCustomUnit.
-  splitSizePreset: "100m",
+  splitSizePreset: "1g",
   splitCustomSize: "",
   splitCustomUnit: "m",
   defaultQrLogin: false,
@@ -240,7 +240,6 @@ const translations = {
     "settings.customCompressionArgsHint":
       "Extra flags passed to 7-Zip. OmniPacker auto-tunes -mmt and -md for your system; overriding them may cause issues. Flags -t, -p, -bsp, and -v are not allowed (use the split setting for -v).",
     "settings.splitArchiveToggle": "Split archive into volumes",
-    "settings.splitPresetCd": "700 MB (CD)",
     "settings.splitPresetDvd": "4.7 GB (DVD)",
     "settings.splitPresetCustom": "Custom…",
     "settings.splitArchiveHint":
@@ -351,7 +350,6 @@ const translations = {
     "os.linuxX86": "Linux x86",
     "os.macos": "macOS",
     "os.macosX64": "macOS x64",
-    "os.macosArm64": "macOS arm64",
     "alert.clearQueue": "Cannot clear queue while a job is running. Cancel the job first.",
     "dd.noDepots":
       "[system] DepotDownloader reported no depots. Verify the OS dropdown matches the target app (Windows x64 is typical).",
@@ -449,7 +447,6 @@ const translations = {
     "settings.customCompressionArgsHint":
       "Flags adicionales para 7-Zip. OmniPacker ajusta -mmt y -md automáticamente; modificarlos puede causar problemas. Los flags -t, -p, -bsp y -v no están permitidos (usa la opción de división para -v).",
     "settings.splitArchiveToggle": "Dividir archivo en volúmenes",
-    "settings.splitPresetCd": "700 MB (CD)",
     "settings.splitPresetDvd": "4.7 GB (DVD)",
     "settings.splitPresetCustom": "Personalizado…",
     "settings.splitArchiveHint":
@@ -559,7 +556,6 @@ const translations = {
     "os.linuxX86": "Linux x86",
     "os.macos": "macOS",
     "os.macosX64": "macOS x64",
-    "os.macosArm64": "macOS arm64",
     "alert.clearQueue":
       "No se puede limpiar la cola mientras hay una tarea en ejecución. Cancele la tarea primero.",
     "dd.noDepots":
@@ -660,7 +656,6 @@ const translations = {
     "settings.customCompressionArgsHint":
       "Flags supplémentaires pour 7-Zip. OmniPacker ajuste -mmt et -md automatiquement; les modifier peut causer des problèmes. Les flags -t, -p, -bsp et -v ne sont pas autorisés (utilisez l'option de division pour -v).",
     "settings.splitArchiveToggle": "Diviser l'archive en volumes",
-    "settings.splitPresetCd": "700 Mo (CD)",
     "settings.splitPresetDvd": "4.7 Go (DVD)",
     "settings.splitPresetCustom": "Personnalisé…",
     "settings.splitArchiveHint":
@@ -770,7 +765,6 @@ const translations = {
     "os.linuxX86": "Linux x86",
     "os.macos": "macOS",
     "os.macosX64": "macOS x64",
-    "os.macosArm64": "macOS arm64",
     "alert.clearQueue":
       "Impossible de vider la file pendant qu'une tâche est en cours. Annulez d'abord la tâche.",
     "dd.noDepots":
@@ -871,7 +865,6 @@ const translations = {
     "settings.customCompressionArgsHint":
       "Zusätzliche Flags für 7-Zip. OmniPacker passt -mmt und -md automatisch an; Änderungen können Probleme verursachen. Die Flags -t, -p, -bsp und -v sind nicht erlaubt (für -v die Aufteilen-Option verwenden).",
     "settings.splitArchiveToggle": "Archiv in Teile aufteilen",
-    "settings.splitPresetCd": "700 MB (CD)",
     "settings.splitPresetDvd": "4.7 GB (DVD)",
     "settings.splitPresetCustom": "Benutzerdefiniert…",
     "settings.splitArchiveHint":
@@ -981,7 +974,6 @@ const translations = {
     "os.linuxX86": "Linux x86",
     "os.macos": "macOS",
     "os.macosX64": "macOS x64",
-    "os.macosArm64": "macOS arm64",
     "alert.clearQueue":
       "Warteschlange kann nicht geleert werden, während ein Job läuft. Brechen Sie den Job zuerst ab.",
     "dd.noDepots":
@@ -1080,7 +1072,6 @@ const translations = {
     "settings.customCompressionArgsHint":
       "Дополнительные флаги для 7-Zip. OmniPacker автоматически настраивает -mmt и -md; их изменение может вызвать проблемы. Флаги -t, -p, -bsp и -v запрещены (для -v используйте параметр разделения).",
     "settings.splitArchiveToggle": "Разделить архив на тома",
-    "settings.splitPresetCd": "700 МБ (CD)",
     "settings.splitPresetDvd": "4.7 ГБ (DVD)",
     "settings.splitPresetCustom": "Другой…",
     "settings.splitArchiveHint":
@@ -1190,7 +1181,6 @@ const translations = {
     "os.linuxX86": "Linux x86",
     "os.macos": "macOS",
     "os.macosX64": "macOS x64",
-    "os.macosArm64": "macOS arm64",
     "alert.clearQueue":
       "Нельзя очистить очередь во время выполнения. Сначала отмените задание.",
     "dd.noDepots":
@@ -1220,7 +1210,6 @@ const osLabelKeys = {
   Linux: "os.linux",
   macOS: "os.macos",
   "macOS x64": "os.macosX64",
-  "macOS arm64": "os.macosArm64",
 };
 
 const qrWaitingTextValues = Object.values(translations)
