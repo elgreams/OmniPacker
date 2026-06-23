@@ -496,6 +496,9 @@ html[lang="de"] .add-to-queue {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* Promote to its own compositing layer so WebKitGTK paints the solid box
+     on the first frame instead of briefly showing the backdrop through it. */
+  transform: translateZ(0);
 }
 
 .modal-title {
