@@ -44,6 +44,14 @@ pub fn build_preflight_args(job: &JobMetadata) -> Result<Vec<String>, String> {
     if !job.branch.is_empty() {
         args.push("-branch".to_string());
         args.push(job.branch.clone());
+
+        // Forward the beta-branch password so preflight resolves the gated
+        // branch's depots/manifests instead of degrading to public. Only valid
+        // alongside a non-public -branch (see build_depot_args).
+        if !job.branch_password.is_empty() && job.branch != "public" {
+            args.push("-branchpassword".to_string());
+            args.push(job.branch_password.clone());
+        }
     }
 
     // OS/arch for depot selection (though we don't filter, DD might need it)

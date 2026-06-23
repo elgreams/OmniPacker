@@ -1870,6 +1870,7 @@ const getFormSnapshot = () => ({
   appId: appIdInput?.value?.trim() || "unknown",
   os: osSelect?.value || "unknown",
   branch: branchInput?.value?.trim() || "public",
+  branchPassword: branchToggle?.checked ? branchPassword?.value || "" : "",
   username: steamUsernameInput?.value?.trim() || "",
   password: steamPasswordInput?.value || "",
   qrEnabled: Boolean(qrLoginToggle?.checked),
@@ -1933,12 +1934,13 @@ const setSavedLogin = (login) => {
 
 const hasSavedLogin = () => Boolean(authState.savedLogin);
 
-const createJob = ({ appId, os, branch, username, password, qrEnabled }) => {
+const createJob = ({ appId, os, branch, branchPassword, username, password, qrEnabled }) => {
   const job = {
     id: createJobId(),
     appId,
     os,
     branch,
+    branchPassword: branchPassword || "",
     username,
     password,
     qrEnabled,
@@ -2808,6 +2810,7 @@ const buildJobMetadata = (job) => ({
   appId: job.appId || "unknown",
   os: job.os || "Windows x64",
   branch: job.branch || "public",
+  branchPassword: job.branchPassword || "",
   username: job.username || "",
   password: job.password || "",
   qrEnabled: Boolean(job.qrEnabled),

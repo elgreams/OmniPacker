@@ -34,6 +34,10 @@ pub struct JobMetadata {
     pub app_id: String,
     pub os: String,
     pub branch: String,
+    /// Password for a password-protected beta branch. Forwarded to
+    /// DepotDownloader as `-branchpassword` only when a non-public branch is set.
+    #[serde(default)]
+    pub branch_password: String,
     pub username: String,
     pub password: String,
     pub qr_enabled: bool,
@@ -503,6 +507,22 @@ fn capitalize_first(s: &str) -> String {
     }
 }
 
+/// Redacts the value following `-password` / `-branchpassword` in a
+/// DepotDownloader arg vector before it is written to a log.
+fn redact_dd_password_args(args: &[String]) -> Vec<String> {
+    let mut redacted = Vec::with_capacity(args.len());
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        redacted.push(arg.clone());
+        if arg == "-password" || arg == "-branchpassword" {
+            if iter.next().is_some() {
+                redacted.push("********".to_string());
+            }
+        }
+    }
+    redacted
+}
+
 fn redact_7z_password_args(args: &[String]) -> Vec<String> {
     args.iter()
         .map(|arg| {
@@ -608,6 +628,14 @@ fn build_depot_args(job: &JobMetadata) -> Result<Vec<String>, String> {
     if !job.branch.is_empty() {
         args.push("-branch".to_string());
         args.push(job.branch.clone());
+
+        // -branchpassword unlocks a password-protected beta. DepotDownloader
+        // rejects it without a -branch, and "public" is never password-gated, so
+        // only emit it for a non-public branch with a password supplied.
+        if !job.branch_password.is_empty() && job.branch != "public" {
+            args.push("-branchpassword".to_string());
+            args.push(job.branch_password.clone());
+        }
     }
 
     let (os, arch) = map_os_selection(&job.os);
@@ -791,15 +819,17 @@ fn run_depotdownloader_worker(
     // Open a main diagnostic log file for this DD run (no-op unless --debug)
     let mut main_log = DebugLog::new(&app_handle, "dd-main");
 
+    let redacted_args = redact_dd_password_args(&args);
+
     debug_log!(main_log, "=== DD Main Log ===");
     debug_log!(main_log, "Binary: {}", path.display());
-    debug_log!(main_log, "Args: {}", args.join(" "));
+    debug_log!(main_log, "Args: {}", redacted_args.join(" "));
     debug_log!(main_log, "Working dir: {}", staging_dir.display());
 
     emit_log(
         &app_handle,
         "system",
-        &format!("DepotDownloader args: {}", args.join(" ")),
+        &format!("DepotDownloader args: {}", redacted_args.join(" ")),
         &job_id,
     );
 
