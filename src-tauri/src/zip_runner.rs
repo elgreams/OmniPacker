@@ -325,7 +325,9 @@ pub fn run_7zip_blocking(
 /// Returns the matched prefix if blocked, or None if the arg is allowed.
 fn blocked_arg_prefix(arg: &str) -> Option<&'static str> {
     let lower = arg.to_ascii_lowercase();
-    const BLOCKED: &[&str] = &["-t", "-p", "-bsp", "a"];
+    // `-v` is managed by the dedicated split setting; block it here so a custom
+    // arg can't inject a conflicting second volume size.
+    const BLOCKED: &[&str] = &["-t", "-p", "-bsp", "-v", "a"];
     for prefix in BLOCKED {
         if *prefix == "a" {
             if lower == "a" {
@@ -358,6 +360,7 @@ pub fn calculate_7z_compression_args(
     output_archive: &std::path::Path,
     password: Option<&str>,
     custom_args: Option<&str>,
+    split_volume_size: Option<&str>,
 ) -> Vec<String> {
     const MB: u64 = 1024 * 1024;
     const GB: u64 = 1024 * MB;
@@ -485,6 +488,15 @@ pub fn calculate_7z_compression_args(
     if let Some(custom) = custom_args {
         let (accepted, _rejected) = filter_custom_args(custom);
         args.extend(accepted);
+    }
+
+    // Split into volumes when requested. `split_volume_size` is a 7-Zip size
+    // token (e.g. "100m", "4g") that makes 7-Zip emit archive.7z.001, .002, …
+    if let Some(size) = split_volume_size {
+        let size = size.trim();
+        if !size.is_empty() {
+            args.push(format!("-v{}", size));
+        }
     }
 
     args.push(output_archive.to_string_lossy().to_string()); // Archive path
@@ -781,4 +793,55 @@ fn is_executable(path: &Path) -> bool {
 #[cfg(windows)]
 fn is_executable(path: &Path) -> bool {
     path.is_file()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn split_size_adds_volume_arg_before_paths() {
+        let args = calculate_7z_compression_args(
+            Path::new("/tmp/out"),
+            Path::new("/tmp/out.7z"),
+            None,
+            None,
+            Some("100m"),
+        );
+        let v_idx = args.iter().position(|a| a == "-v100m").expect("-v arg present");
+        let archive_idx = args
+            .iter()
+            .position(|a| a == "/tmp/out.7z")
+            .expect("archive path present");
+        assert!(v_idx < archive_idx, "-v must precede the archive path");
+    }
+
+    #[test]
+    fn no_split_when_size_absent_or_blank() {
+        let none = calculate_7z_compression_args(
+            Path::new("/tmp/out"),
+            Path::new("/tmp/out.7z"),
+            None,
+            None,
+            None,
+        );
+        assert!(none.iter().all(|a| !a.starts_with("-v")));
+
+        let blank = calculate_7z_compression_args(
+            Path::new("/tmp/out"),
+            Path::new("/tmp/out.7z"),
+            None,
+            None,
+            Some("   "),
+        );
+        assert!(blank.iter().all(|a| !a.starts_with("-v")));
+    }
+
+    #[test]
+    fn custom_args_cannot_inject_volume_flag() {
+        let (accepted, rejected) = filter_custom_args("-mhe=off -v50m");
+        assert!(accepted.contains(&"-mhe=off".to_string()));
+        assert!(rejected.contains(&"-v50m".to_string()));
+    }
 }

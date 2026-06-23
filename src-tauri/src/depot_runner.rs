@@ -57,6 +57,11 @@ pub struct JobMetadata {
     pub compression_password: String,
     #[serde(default)]
     pub custom_compression_args: String,
+    /// 7-Zip volume size token (e.g. "100m", "4g") when the user enabled archive
+    /// splitting. Empty means no split. Forwarded as `-v<size>`, which makes
+    /// 7-Zip emit `archive.7z.001`, `.002`, … instead of a single file.
+    #[serde(default)]
+    pub split_volume_size: String,
 }
 
 /// Internal state tracking the running job
@@ -549,24 +554,75 @@ enum CompressionError {
     Failed(String),
 }
 
+/// Path of the first volume 7-Zip writes when splitting (`archive.7z.001`).
+fn first_volume_path(archive_path: &std::path::Path) -> std::path::PathBuf {
+    let mut name = archive_path.as_os_str().to_os_string();
+    name.push(".001");
+    std::path::PathBuf::from(name)
+}
+
+/// Removes any archive output left behind, covering both the single-file case
+/// (`archive.7z`) and the split case (`archive.7z.001`, `.002`, …). 7-Zip does
+/// not pad volume numbers beyond three digits until they overflow, so we scan
+/// the directory for siblings sharing the archive file name as a prefix.
+fn remove_archive_outputs(archive_path: &std::path::Path) {
+    let _ = std::fs::remove_file(archive_path);
+
+    let (Some(parent), Some(file_name)) =
+        (archive_path.parent(), archive_path.file_name().and_then(|n| n.to_str()))
+    else {
+        return;
+    };
+
+    // Split volumes are named "<file_name>.NNN"; match that exact shape so we
+    // never delete unrelated files that merely start with the same prefix.
+    let volume_prefix = format!("{}.", file_name);
+    if let Ok(entries) = std::fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                if let Some(suffix) = name.strip_prefix(&volume_prefix) {
+                    if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn compress_output(
     app_handle: &AppHandle,
     output_path: &std::path::Path,
     job_id: &str,
     compression_password: Option<&str>,
     custom_compression_args: Option<&str>,
+    split_volume_size: Option<&str>,
 ) -> Result<std::path::PathBuf, CompressionError> {
     let archive_path = resolve_archive_path(output_path);
 
-    if archive_path.exists() {
+    // When splitting, 7-Zip writes archive.7z.001, .002, … rather than
+    // archive.7z itself, so check for the first volume in that case.
+    let split = split_volume_size.is_some();
+    let first_volume_path = first_volume_path(&archive_path);
+    let existing = if split {
+        &first_volume_path
+    } else {
+        &archive_path
+    };
+    if existing.exists() {
         return Err(CompressionError::Failed(format!(
             "Archive already exists: {}",
-            archive_path.display()
+            existing.display()
         )));
     }
 
-    let args =
-        calculate_7z_compression_args(output_path, &archive_path, compression_password, custom_compression_args);
+    let args = calculate_7z_compression_args(
+        output_path,
+        &archive_path,
+        compression_password,
+        custom_compression_args,
+        split_volume_size,
+    );
     let redacted_args = redact_7z_password_args(&args);
 
     emit_log(
@@ -580,27 +636,35 @@ fn compress_output(
     let exit_code = match run_7zip_blocking(app_handle, &zip_state, args) {
         Ok(SevenZipOutcome::Exited(code)) => code,
         Ok(SevenZipOutcome::Cancelled) => {
-            // User cancelled: remove the partial archive and signal cancel so
+            // User cancelled: remove any partial archive output (a single file,
+            // or all .001/.002/… volumes when splitting) and signal cancel so
             // the worker stops the queue instead of falling through to success.
-            let _ = std::fs::remove_file(&archive_path);
+            remove_archive_outputs(&archive_path);
             return Err(CompressionError::Cancelled);
         }
         Err(err) => {
-            let _ = std::fs::remove_file(&archive_path);
+            remove_archive_outputs(&archive_path);
             return Err(CompressionError::Failed(err));
         }
     };
 
     if exit_code != 0 {
-        // Clean up partial archive if it exists
-        let _ = std::fs::remove_file(&archive_path);
+        // Clean up partial archive output if any exists
+        remove_archive_outputs(&archive_path);
         return Err(CompressionError::Failed(format!(
             "7-Zip exited with code {}",
             exit_code
         )));
     }
 
-    if !archive_path.exists() {
+    // When splitting, the single archive.7z never exists; the first volume
+    // (archive.7z.001) is the canonical "did it produce output" marker.
+    let produced = if split {
+        first_volume_path.exists()
+    } else {
+        archive_path.exists()
+    };
+    if !produced {
         return Err(CompressionError::Failed(
             "Archive not found after compression".to_string(),
         ));
@@ -1118,12 +1182,20 @@ fn run_depotdownloader_worker(
                                 Some(custom_args_raw)
                             };
 
+                            let split_size_raw = job_for_monitor.split_volume_size.trim();
+                            let split_volume_size = if split_size_raw.is_empty() {
+                                None
+                            } else {
+                                Some(split_size_raw)
+                            };
+
                             match compress_output(
                                 &app_handle_clone,
                                 &output_path,
                                 &job_id_for_monitor,
                                 compression_password,
                                 custom_compression_args,
+                                split_volume_size,
                             ) {
                                 Ok(archive_path) => {
                                     emit_log(

@@ -596,6 +596,26 @@ html[lang="de"] .add-to-queue {
   width: 100%;
 }
 
+.settings-split-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 22px;
+}
+
+.settings-split-custom {
+  display: none;
+  gap: 6px;
+}
+
+.settings-split-custom.active {
+  display: flex;
+}
+
+.settings-split-custom input[type="number"] {
+  flex: 1;
+}
+
 .settings-hint {
   font-size: 11px;
   color: #999;

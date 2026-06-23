@@ -173,6 +173,41 @@
           </div>
 
           <div class="settings-group">
+            <label class="settings-checkbox-row">
+              <input id="split-archive-toggle" type="checkbox" />
+              <span data-i18n="settings.splitArchiveToggle">Split archive into volumes</span>
+            </label>
+            <div class="settings-split-row">
+              <select id="split-size-preset" class="settings-select" disabled>
+                <option value="100m">100 MB</option>
+                <option value="200m">200 MB</option>
+                <option value="700m" data-i18n="settings.splitPresetCd">700 MB (CD)</option>
+                <option value="1g">1 GB</option>
+                <option value="2g">2 GB</option>
+                <option value="4g">4 GB</option>
+                <option value="4700m" data-i18n="settings.splitPresetDvd">4.7 GB (DVD)</option>
+                <option value="custom" data-i18n="settings.splitPresetCustom">Custom…</option>
+              </select>
+              <div class="settings-split-custom" id="split-custom-row">
+                <input
+                  id="split-custom-size"
+                  type="number"
+                  min="1"
+                  step="1"
+                  disabled
+                />
+                <select id="split-custom-unit" class="settings-select" disabled>
+                  <option value="m">MB</option>
+                  <option value="g">GB</option>
+                </select>
+              </div>
+            </div>
+            <span class="settings-hint" data-i18n="settings.splitArchiveHint">
+              Splits the output into multiple volumes (archive.7z.001, .002, …) of the chosen size. Reassemble by extracting the .001 file.
+            </span>
+          </div>
+
+          <div class="settings-group">
             <label class="settings-label" for="custom-compression-args" data-i18n="settings.customCompressionArgsLabel">
               Custom 7-Zip arguments:
             </label>

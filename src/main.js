@@ -29,6 +29,11 @@ const compressionPasswordInput = document.getElementById(
   "compression-password-input",
 );
 const customCompressionArgsInput = document.getElementById("custom-compression-args");
+const splitArchiveToggle = document.getElementById("split-archive-toggle");
+const splitSizePreset = document.getElementById("split-size-preset");
+const splitCustomRow = document.getElementById("split-custom-row");
+const splitCustomSize = document.getElementById("split-custom-size");
+const splitCustomUnit = document.getElementById("split-custom-unit");
 const defaultQrToggle = document.getElementById("default-qr-toggle");
 const languageSelect = document.getElementById("language-select");
 const saveLoginButton = document.querySelector(".save-login-button");
@@ -96,6 +101,12 @@ const settingsState = {
   compressionPasswordEnabled: false,
   compressionPassword: "",
   customCompressionArgs: "",
+  splitArchiveEnabled: false,
+  // 7-Zip volume size token, e.g. "100m", "1g", "4700m". When the preset is
+  // "custom", this is derived from splitCustomSize + splitCustomUnit.
+  splitSizePreset: "100m",
+  splitCustomSize: "",
+  splitCustomUnit: "m",
   defaultQrLogin: false,
   language: "en",
   defaultTemplate: null,
@@ -206,7 +217,13 @@ const translations = {
       "Header encryption (-mhe=on) is enabled by default when a password is set.",
     "settings.customCompressionArgsLabel": "Custom 7-Zip arguments:",
     "settings.customCompressionArgsHint":
-      "Extra flags passed to 7-Zip. OmniPacker auto-tunes -mmt and -md for your system; overriding them may cause issues. Flags -t, -p, and -bsp are not allowed.",
+      "Extra flags passed to 7-Zip. OmniPacker auto-tunes -mmt and -md for your system; overriding them may cause issues. Flags -t, -p, -bsp, and -v are not allowed (use the split setting for -v).",
+    "settings.splitArchiveToggle": "Split archive into volumes",
+    "settings.splitPresetCd": "700 MB (CD)",
+    "settings.splitPresetDvd": "4.7 GB (DVD)",
+    "settings.splitPresetCustom": "Custom…",
+    "settings.splitArchiveHint":
+      "Splits the output into multiple volumes (archive.7z.001, .002, …) of the chosen size. Reassemble by extracting the .001 file.",
     "settings.defaultQrLogin": "Default to QR Login",
     "settings.deleteLogin": "Delete Saved Login Data",
     "update.available": "OmniPacker v{{version}} is available.",
@@ -376,7 +393,13 @@ const translations = {
       "El cifrado de encabezados (-mhe=on) se activa por defecto con contraseña.",
     "settings.customCompressionArgsLabel": "Argumentos personalizados de 7-Zip:",
     "settings.customCompressionArgsHint":
-      "Flags adicionales para 7-Zip. OmniPacker ajusta -mmt y -md automáticamente; modificarlos puede causar problemas. Los flags -t, -p y -bsp no están permitidos.",
+      "Flags adicionales para 7-Zip. OmniPacker ajusta -mmt y -md automáticamente; modificarlos puede causar problemas. Los flags -t, -p, -bsp y -v no están permitidos (usa la opción de división para -v).",
+    "settings.splitArchiveToggle": "Dividir archivo en volúmenes",
+    "settings.splitPresetCd": "700 MB (CD)",
+    "settings.splitPresetDvd": "4.7 GB (DVD)",
+    "settings.splitPresetCustom": "Personalizado…",
+    "settings.splitArchiveHint":
+      "Divide la salida en varios volúmenes (archive.7z.001, .002, …) del tamaño elegido. Para reensamblar, extrae el archivo .001.",
     "settings.defaultQrLogin": "Usar QR de forma predeterminada",
     "settings.deleteLogin": "Eliminar datos de inicio de sesión guardados",
     "update.available": "OmniPacker v{{version}} ya está disponible.",
@@ -548,7 +571,13 @@ const translations = {
       "Le chiffrement des en-têtes (-mhe=on) est activé par défaut avec un mot de passe.",
     "settings.customCompressionArgsLabel": "Arguments 7-Zip personnalisés :",
     "settings.customCompressionArgsHint":
-      "Flags supplémentaires pour 7-Zip. OmniPacker ajuste -mmt et -md automatiquement; les modifier peut causer des problèmes. Les flags -t, -p et -bsp ne sont pas autorisés.",
+      "Flags supplémentaires pour 7-Zip. OmniPacker ajuste -mmt et -md automatiquement; les modifier peut causer des problèmes. Les flags -t, -p, -bsp et -v ne sont pas autorisés (utilisez l'option de division pour -v).",
+    "settings.splitArchiveToggle": "Diviser l'archive en volumes",
+    "settings.splitPresetCd": "700 Mo (CD)",
+    "settings.splitPresetDvd": "4.7 Go (DVD)",
+    "settings.splitPresetCustom": "Personnalisé…",
+    "settings.splitArchiveHint":
+      "Divise la sortie en plusieurs volumes (archive.7z.001, .002, …) de la taille choisie. Pour réassembler, extrayez le fichier .001.",
     "settings.defaultQrLogin": "Utiliser QR par défaut",
     "settings.deleteLogin": "Supprimer les identifiants enregistrés",
     "update.available": "OmniPacker v{{version}} est disponible.",
@@ -720,7 +749,13 @@ const translations = {
       "Header-Verschlüsselung (-mhe=on) ist standardmäßig bei Passwort aktiviert.",
     "settings.customCompressionArgsLabel": "Benutzerdefinierte 7-Zip-Argumente:",
     "settings.customCompressionArgsHint":
-      "Zusätzliche Flags für 7-Zip. OmniPacker passt -mmt und -md automatisch an; Änderungen können Probleme verursachen. Die Flags -t, -p und -bsp sind nicht erlaubt.",
+      "Zusätzliche Flags für 7-Zip. OmniPacker passt -mmt und -md automatisch an; Änderungen können Probleme verursachen. Die Flags -t, -p, -bsp und -v sind nicht erlaubt (für -v die Aufteilen-Option verwenden).",
+    "settings.splitArchiveToggle": "Archiv in Teile aufteilen",
+    "settings.splitPresetCd": "700 MB (CD)",
+    "settings.splitPresetDvd": "4.7 GB (DVD)",
+    "settings.splitPresetCustom": "Benutzerdefiniert…",
+    "settings.splitArchiveHint":
+      "Teilt die Ausgabe in mehrere Teile (archive.7z.001, .002, …) der gewählten Größe auf. Zum Zusammenfügen die .001-Datei entpacken.",
     "settings.defaultQrLogin": "Standardmäßig QR-Login verwenden",
     "settings.deleteLogin": "Gespeicherte Login-Daten löschen",
     "update.available": "OmniPacker v{{version}} ist verfügbar.",
@@ -890,7 +925,13 @@ const translations = {
       "Шифрование заголовков (-mhe=on) включено по умолчанию при наличии пароля.",
     "settings.customCompressionArgsLabel": "Пользовательские аргументы 7-Zip:",
     "settings.customCompressionArgsHint":
-      "Дополнительные флаги для 7-Zip. OmniPacker автоматически настраивает -mmt и -md; их изменение может вызвать проблемы. Флаги -t, -p и -bsp запрещены.",
+      "Дополнительные флаги для 7-Zip. OmniPacker автоматически настраивает -mmt и -md; их изменение может вызвать проблемы. Флаги -t, -p, -bsp и -v запрещены (для -v используйте параметр разделения).",
+    "settings.splitArchiveToggle": "Разделить архив на тома",
+    "settings.splitPresetCd": "700 МБ (CD)",
+    "settings.splitPresetDvd": "4.7 ГБ (DVD)",
+    "settings.splitPresetCustom": "Другой…",
+    "settings.splitArchiveHint":
+      "Разделяет вывод на несколько томов (archive.7z.001, .002, …) выбранного размера. Для сборки распакуйте файл .001.",
     "settings.defaultQrLogin": "QR-вход по умолчанию",
     "settings.deleteLogin": "Удалить сохраненные данные входа",
     "update.available": "Доступна версия OmniPacker v{{version}}.",
@@ -1832,6 +1873,18 @@ const loadSettings = () => {
       if (typeof parsed.customCompressionArgs === "string") {
         settingsState.customCompressionArgs = parsed.customCompressionArgs;
       }
+      if (typeof parsed.splitArchiveEnabled === "boolean") {
+        settingsState.splitArchiveEnabled = parsed.splitArchiveEnabled;
+      }
+      if (typeof parsed.splitSizePreset === "string") {
+        settingsState.splitSizePreset = parsed.splitSizePreset;
+      }
+      if (typeof parsed.splitCustomSize === "string") {
+        settingsState.splitCustomSize = parsed.splitCustomSize;
+      }
+      if (parsed.splitCustomUnit === "m" || parsed.splitCustomUnit === "g") {
+        settingsState.splitCustomUnit = parsed.splitCustomUnit;
+      }
       if (typeof parsed.defaultQrLogin === "boolean") {
         settingsState.defaultQrLogin = parsed.defaultQrLogin;
       }
@@ -1854,6 +1907,13 @@ const loadSettings = () => {
     ) {
       settingsState.compressionPasswordEnabled = false;
     }
+    if (
+      settingsState.splitArchiveEnabled &&
+      settingsState.splitSizePreset === "custom" &&
+      !resolveSplitVolumeSize()
+    ) {
+      settingsState.splitArchiveEnabled = false;
+    }
   } catch (e) {
     console.debug("[OmniPacker] Failed to load settings:", e);
   }
@@ -1865,6 +1925,42 @@ const saveSettings = () => {
     localStorage.setItem("omnipacker-settings", JSON.stringify(settingsState));
   } catch (e) {
     console.debug("[OmniPacker] Failed to save settings:", e);
+  }
+};
+
+// Resolves the current split settings into a 7-Zip volume-size token like
+// "100m" or "4g". Returns "" when splitting is off or the custom size is
+// missing/invalid, so callers can treat empty as "no split".
+const resolveSplitVolumeSize = () => {
+  if (!settingsState.splitArchiveEnabled) {
+    return "";
+  }
+  if (settingsState.splitSizePreset === "custom") {
+    const value = parseInt(settingsState.splitCustomSize, 10);
+    if (!Number.isFinite(value) || value <= 0) {
+      return "";
+    }
+    const unit = settingsState.splitCustomUnit === "g" ? "g" : "m";
+    return `${value}${unit}`;
+  }
+  return settingsState.splitSizePreset;
+};
+
+const syncSplitArchiveUI = () => {
+  if (!splitArchiveToggle || !splitSizePreset) {
+    return;
+  }
+  const enabled = splitArchiveToggle.checked;
+  const isCustom = splitSizePreset.value === "custom";
+  splitSizePreset.disabled = !enabled;
+  if (splitCustomSize) {
+    splitCustomSize.disabled = !enabled || !isCustom;
+  }
+  if (splitCustomUnit) {
+    splitCustomUnit.disabled = !enabled || !isCustom;
+  }
+  if (splitCustomRow) {
+    splitCustomRow.classList.toggle("active", isCustom);
   }
 };
 
@@ -1900,6 +1996,18 @@ const applySettingsToUI = () => {
   if (customCompressionArgsInput) {
     customCompressionArgsInput.value = settingsState.customCompressionArgs;
   }
+  if (splitArchiveToggle) {
+    splitArchiveToggle.checked = settingsState.splitArchiveEnabled;
+  }
+  if (splitSizePreset) {
+    splitSizePreset.value = settingsState.splitSizePreset;
+  }
+  if (splitCustomSize) {
+    splitCustomSize.value = settingsState.splitCustomSize;
+  }
+  if (splitCustomUnit) {
+    splitCustomUnit.value = settingsState.splitCustomUnit;
+  }
   if (defaultQrToggle) {
     defaultQrToggle.checked = settingsState.defaultQrLogin;
   }
@@ -1907,6 +2015,7 @@ const applySettingsToUI = () => {
     languageSelect.value = settingsState.language;
   }
   syncCompressionPasswordUI();
+  syncSplitArchiveUI();
   applyTranslations();
 };
 
@@ -2919,6 +3028,7 @@ const buildJobMetadata = (job) => ({
   compressionPasswordEnabled: settingsState.compressionPasswordEnabled,
   compressionPassword: settingsState.compressionPassword,
   customCompressionArgs: settingsState.customCompressionArgs,
+  splitVolumeSize: resolveSplitVolumeSize(),
 });
 
 const startJob = async () => {
@@ -3566,6 +3676,36 @@ if (compressionPasswordInput) {
 if (customCompressionArgsInput) {
   customCompressionArgsInput.addEventListener("input", () => {
     settingsState.customCompressionArgs = customCompressionArgsInput.value;
+    saveSettings();
+  });
+}
+
+if (splitArchiveToggle) {
+  splitArchiveToggle.addEventListener("change", () => {
+    settingsState.splitArchiveEnabled = splitArchiveToggle.checked;
+    syncSplitArchiveUI();
+    saveSettings();
+  });
+}
+
+if (splitSizePreset) {
+  splitSizePreset.addEventListener("change", () => {
+    settingsState.splitSizePreset = splitSizePreset.value;
+    syncSplitArchiveUI();
+    saveSettings();
+  });
+}
+
+if (splitCustomSize) {
+  splitCustomSize.addEventListener("input", () => {
+    settingsState.splitCustomSize = splitCustomSize.value;
+    saveSettings();
+  });
+}
+
+if (splitCustomUnit) {
+  splitCustomUnit.addEventListener("change", () => {
+    settingsState.splitCustomUnit = splitCustomUnit.value;
     saveSettings();
   });
 }
