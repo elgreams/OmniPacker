@@ -346,4 +346,71 @@ mod tests {
         let txt = derive_template_txt_path(&dir).unwrap();
         assert_eq!(txt, PathBuf::from("/out/Game.txt"));
     }
+
+    /// Creates a unique temporary directory for a test and returns its path.
+    fn temp_dir(label: &str) -> PathBuf {
+        let mut dir = std::env::temp_dir();
+        let unique = format!(
+            "omnipacker_tmpl_{}_{}",
+            label,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        dir.push(unique);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn sample_metadata() -> TemplateMetadata {
+        TemplateMetadata {
+            game_name: "Balatro".to_string(),
+            os: "Win64".to_string(),
+            branch: "Public".to_string(),
+            build_datetime_utc: "February 24, 2025 - 22:02:36 UTC".to_string(),
+            build_id: "18674832".to_string(),
+            depots: vec![TemplateDepot {
+                depot_id: "2923300".to_string(),
+                depot_name: "Balatro Content".to_string(),
+                manifest_id: "4851806656204679952".to_string(),
+            }],
+        }
+    }
+
+    #[test]
+    fn test_write_template_file_dotted_directory() {
+        // End-to-end: the dotted output folder name that previously errored must
+        // now produce a sibling .txt with rendered content actually on disk.
+        let root = temp_dir("write_dir");
+        let output_dir = root.join("Balatro.Build.18674832.Win64.Public");
+        fs::create_dir_all(&output_dir).unwrap();
+
+        write_template_file(&output_dir, &sample_metadata(), None).unwrap();
+
+        let expected_txt = root.join("Balatro.Build.18674832.Win64.Public.txt");
+        assert!(expected_txt.is_file(), "template .txt was not written");
+        let contents = fs::read_to_string(&expected_txt).unwrap();
+        assert!(contents.contains("Balatro"));
+        assert!(contents.contains("4851806656204679952"));
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn test_write_template_file_7z_archive() {
+        // The .7z path: the directory has already been removed by compression,
+        // so only the archive path exists. The .txt must still land beside it.
+        let root = temp_dir("write_7z");
+        let archive = root.join("Balatro.Build.18674832.Win64.Public.7z");
+
+        write_template_file(&archive, &sample_metadata(), None).unwrap();
+
+        let expected_txt = root.join("Balatro.Build.18674832.Win64.Public.txt");
+        assert!(expected_txt.is_file(), "template .txt was not written");
+        let contents = fs::read_to_string(&expected_txt).unwrap();
+        assert!(contents.contains("Balatro"));
+
+        fs::remove_dir_all(&root).ok();
+    }
 }
