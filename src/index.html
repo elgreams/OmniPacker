@@ -248,7 +248,12 @@
       <div class="modal template-modal">
         <div class="template-header">
           <div class="modal-title" data-i18n="template.title">Template Editor</div>
-          <button type="button" class="template-close-button" data-i18n="action.close">Close</button>
+          <div class="template-header-actions">
+            <button type="button" class="template-mode-button" data-i18n="template.mode.toCrew">
+              Switch to Crew Mode
+            </button>
+            <button type="button" class="template-close-button" data-i18n="action.close">Close</button>
+          </div>
         </div>
         <div class="template-body">
           <section class="template-panel template-builder-panel">
@@ -262,6 +267,20 @@
               </div>
             </div>
             <div class="template-status" aria-live="polite"></div>
+            <div class="template-crew-settings" hidden>
+              <div class="settings-group">
+                <label class="settings-label" for="crew-username-input" data-i18n="template.crew.username">
+                  Uploader name:
+                </label>
+                <input id="crew-username-input" type="text" />
+              </div>
+              <div class="settings-group">
+                <label class="settings-label" for="crew-filehost-input" data-i18n="template.crew.filehost">
+                  File host:
+                </label>
+                <input id="crew-filehost-input" type="text" />
+              </div>
+            </div>
             <div class="template-blocks"></div>
             <div class="template-file-actions">
               <button type="button" class="template-load-button" data-i18n="template.load">Load JSON</button>

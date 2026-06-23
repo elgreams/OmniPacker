@@ -62,6 +62,13 @@ pub struct JobMetadata {
     /// 7-Zip emit `archive.7z.001`, `.002`, … instead of a single file.
     #[serde(default)]
     pub split_volume_size: String,
+    /// Crew-mode uploader handle. Only populated when the template editor is in
+    /// crew mode; empty otherwise. Injected into the `{{username}}` token.
+    #[serde(default)]
+    pub crew_username: String,
+    /// Crew-mode file host label. Injected into the `{{filehost}}` token.
+    #[serde(default)]
+    pub crew_filehost: String,
 }
 
 /// Internal state tracking the running job
@@ -277,10 +284,12 @@ fn derive_metadata_from_download(
 ) -> Result<(), String> {
     use std::fs;
 
-    // Fetch game name from Steam API
-    let game_name = match fetch_app_info(&job.app_id) {
-        Ok(info) => info.name,
-        Err(_) => format!("app_{}", job.app_id), // Fallback
+    // Fetch game name (and store metadata for the crew template preset) from
+    // the Steam API. Description/website are best-effort: an API failure still
+    // yields a usable job via the app_<id> name fallback.
+    let (game_name, game_description, website) = match fetch_app_info(&job.app_id) {
+        Ok(info) => (info.name, info.short_description, info.website),
+        Err(_) => (format!("app_{}", job.app_id), String::new(), None),
     };
 
     let depots_dir = staging_dir.join("depots");
@@ -467,7 +476,7 @@ fn derive_metadata_from_download(
     }
 
     // Create job metadata
-    let job_metadata = JobMetadataFile::new(
+    let mut job_metadata = JobMetadataFile::new(
         job_id.to_string(),
         job.app_id.clone(),
         branch_normalized,
@@ -479,6 +488,8 @@ fn derive_metadata_from_download(
         build_datetime_utc,
         depots,
     );
+    job_metadata.game_description = game_description;
+    job_metadata.website = website;
 
     // Write job.json
     job_metadata.write_to_dir(staging_dir)?;
@@ -1125,7 +1136,11 @@ fn run_depotdownloader_worker(
                         if let Ok(metadata) =
                             JobMetadataFile::read_from_dir(&staging_dir_for_monitor)
                         {
-                            let template_metadata = TemplateMetadata::from_job_metadata(&metadata);
+                            let mut template_metadata = TemplateMetadata::from_job_metadata(&metadata);
+                            template_metadata.set_crew_fields(
+                                job_for_monitor.crew_username.clone(),
+                                job_for_monitor.crew_filehost.clone(),
+                            );
                             app_handle_clone
                                 .state::<TemplateMetadataState>()
                                 .set(template_metadata);

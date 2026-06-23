@@ -108,6 +108,11 @@ pub fn render_template(
     base_values.insert("branch".to_string(), metadata.branch.clone());
     base_values.insert("build_datetime_utc".to_string(), metadata.build_datetime_utc.clone());
     base_values.insert("build_id".to_string(), metadata.build_id.clone());
+    base_values.insert("app_id".to_string(), metadata.app_id.clone());
+    base_values.insert("game_description".to_string(), metadata.game_description.clone());
+    base_values.insert("website".to_string(), metadata.website.clone());
+    base_values.insert("username".to_string(), metadata.username.clone());
+    base_values.insert("filehost".to_string(), metadata.filehost.clone());
 
     for block in blocks {
         let part = match block {
@@ -217,6 +222,45 @@ pub fn create_default_template() -> Vec<TemplateBlock> {
     ]
 }
 
+/// Creates the "crew" preset: a store-style release post mirroring the layout of
+/// SuperSteamPacker's Upload Crew output. The standard depot/version blocks are
+/// reused; the store header (image, description, download links) lives in a
+/// single FreeText block and pulls the crew-only tokens (app_id,
+/// game_description, website, username, filehost). Kept in sync with the
+/// frontend `createCrewTemplate` in main.js.
+///
+/// Not referenced in production paths: the frontend always persists the active
+/// block list to backend storage, so generation reads those blocks directly.
+/// This mirrors the frontend preset as the canonical Rust-side definition and is
+/// exercised by tests.
+#[allow(dead_code)]
+pub fn create_crew_template() -> Vec<TemplateBlock> {
+    vec![
+        TemplateBlock::FreeText {
+            config: FreeTextConfig {
+                text: CREW_HEADER_FREETEXT.to_string(),
+            },
+        },
+        TemplateBlock::DepotList {
+            config: DepotListConfig {
+                title: Some("\"[color=white]Depots & Manifests[/color]\"".to_string()),
+                line_template: "{{depot_id}} - {{depot_name}} [Manifest {{manifest_id}}]".to_string(),
+                use_code_block: Some(true),
+                max_depots: Some(100),
+            },
+        },
+        TemplateBlock::UploadedVersion {
+            config: UploadedVersionConfig {
+                template: "[color=white][b]Uploaded version:[/b] [i]{{build_datetime_utc}} [Build {{build_id}}][/i][/color]".to_string(),
+            },
+        },
+    ]
+}
+
+/// Store-header FreeText body for the crew preset. `#UploadDate#` is an
+/// intentional literal placeholder the user edits by hand after uploading.
+const CREW_HEADER_FREETEXT: &str = "[img]https://steamcdn-a.akamaihd.net/steam/apps/{{app_id}}/header.jpg[/img]\n\n\n[color=red][b]About This Game:[/b][/color]\n[img]https://steamstore-a.akamaihd.net/public/images/v6/maincol_gradient_rule.png[/img]\n{{game_description}}\n\n[color=red][b]Official Site:[/b][/color]\n[url]https://store.steampowered.com/app/{{app_id}}/[/url]\n[url]{{website}}[/url]\n\n[color=red][b]Download Links:[/b][/color]\n[list][color=yellow][b]Mirror 1[/b][/color]\n[url=][color=cyan]{{game_name}}[/color] | [color=#FF8000]#UploadDate#[/color][/url] ({{filehost}}) [i]< uploaded by {{username}} >[/i][/list]\n\n\n[color=red][b]{{game_name}}[/b][/color]";
+
 /// Derives the sibling `.txt` path for the template alongside an output.
 ///
 /// This is purely string-based: it does NOT probe the filesystem. The output
@@ -290,6 +334,11 @@ mod tests {
             branch: "Public".to_string(),
             build_datetime_utc: "February 24, 2025 - 22:02:36 UTC".to_string(),
             build_id: "18674832".to_string(),
+            app_id: "2379780".to_string(),
+            game_description: "A roguelike deckbuilder.".to_string(),
+            website: "https://www.playbalatro.com".to_string(),
+            username: String::new(),
+            filehost: String::new(),
             depots: vec![
                 TemplateDepot {
                     depot_id: "2923300".to_string(),
@@ -322,6 +371,40 @@ mod tests {
     }
 
     #[test]
+    fn test_crew_template_renders_store_tokens() {
+        let mut metadata = TemplateMetadata {
+            game_name: "Balatro".to_string(),
+            os: "Win64".to_string(),
+            branch: "Public".to_string(),
+            build_datetime_utc: "February 24, 2025 - 22:02:36 UTC".to_string(),
+            build_id: "18674832".to_string(),
+            app_id: "2379780".to_string(),
+            game_description: "A roguelike deckbuilder.".to_string(),
+            website: "https://www.playbalatro.com".to_string(),
+            username: String::new(),
+            filehost: String::new(),
+            depots: vec![TemplateDepot {
+                depot_id: "2379781".to_string(),
+                depot_name: "Balatro".to_string(),
+                manifest_id: "4851806656204679952".to_string(),
+            }],
+        };
+        metadata.set_crew_fields("packer".to_string(), "RapidFileHost".to_string());
+
+        let rendered = render_template(&create_crew_template(), &metadata).unwrap();
+        // Crew-only tokens resolve.
+        assert!(rendered.contains("steam/apps/2379780/header.jpg"));
+        assert!(rendered.contains("A roguelike deckbuilder."));
+        assert!(rendered.contains("https://www.playbalatro.com"));
+        assert!(rendered.contains("uploaded by packer"));
+        assert!(rendered.contains("(RapidFileHost)"));
+        // The hand-edited upload-date placeholder is preserved verbatim.
+        assert!(rendered.contains("#UploadDate#"));
+        // Depot list still renders.
+        assert!(rendered.contains("4851806656204679952"));
+    }
+
+    #[test]
     fn test_advertise_omnipacker_renders_credit_line() {
         let metadata = TemplateMetadata {
             game_name: "Balatro".to_string(),
@@ -329,6 +412,11 @@ mod tests {
             branch: "Public".to_string(),
             build_datetime_utc: "February 24, 2025 - 22:02:36 UTC".to_string(),
             build_id: "18674832".to_string(),
+            app_id: "2379780".to_string(),
+            game_description: "A roguelike deckbuilder.".to_string(),
+            website: "https://www.playbalatro.com".to_string(),
+            username: String::new(),
+            filehost: String::new(),
             depots: vec![],
         };
 
@@ -350,6 +438,11 @@ mod tests {
             branch: "Public".to_string(),
             build_datetime_utc: "February 24, 2025 - 22:02:36 UTC".to_string(),
             build_id: "18674832".to_string(),
+            app_id: "2379780".to_string(),
+            game_description: "A roguelike deckbuilder.".to_string(),
+            website: "https://www.playbalatro.com".to_string(),
+            username: String::new(),
+            filehost: String::new(),
             depots: vec![TemplateDepot {
                 depot_id: "2923300".to_string(),
                 depot_name: "Balatro Content".to_string(),
@@ -421,6 +514,11 @@ mod tests {
             branch: "Public".to_string(),
             build_datetime_utc: "February 24, 2025 - 22:02:36 UTC".to_string(),
             build_id: "18674832".to_string(),
+            app_id: "2379780".to_string(),
+            game_description: "A roguelike deckbuilder.".to_string(),
+            website: "https://www.playbalatro.com".to_string(),
+            username: String::new(),
+            filehost: String::new(),
             depots: vec![TemplateDepot {
                 depot_id: "2923300".to_string(),
                 depot_name: "Balatro Content".to_string(),

@@ -758,6 +758,36 @@ html[lang="de"] .add-to-queue {
   gap: 8px;
 }
 
+.template-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.template-crew-settings {
+  display: flex;
+  gap: 12px;
+  padding: 8px;
+  background: #1a191a;
+  border: 1px solid #505050;
+}
+
+.template-crew-settings .settings-group {
+  flex: 1;
+}
+
+.template-crew-settings input {
+  padding: 6px 8px;
+  background: #1a191a;
+  border: 1px solid #505050;
+  color: #e6e6e6;
+  font-size: 13px;
+}
+
+.template-crew-settings[hidden] {
+  display: none;
+}
+
 .template-body {
   flex: 1;
   min-height: 0;

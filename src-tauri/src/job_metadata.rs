@@ -67,6 +67,13 @@ pub struct JobMetadataFile {
     /// Build release datetime (UTC) if available
     #[serde(skip_serializing_if = "Option::is_none")]
     pub build_datetime_utc: Option<DateTime<Utc>>,
+    /// Short store description from Steam appdetails. Empty when unavailable.
+    /// Used by the "crew" template preset; absent for older job.json files.
+    #[serde(default)]
+    pub game_description: String,
+    /// Official website URL from Steam appdetails (https-normalized), if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub website: Option<String>,
     /// List of depots included in this job
     pub depots: Vec<DepotInfo>,
     /// Timestamp when appinfo was fetched
@@ -100,6 +107,8 @@ impl JobMetadataFile {
             build_id,
             build_id_source,
             build_datetime_utc,
+            game_description: String::new(),
+            website: None,
             depots,
             appinfo_fetched_at: Utc::now(),
             metadata_version: Some(METADATA_VERSION.to_string()),

@@ -64,6 +64,10 @@ const templateAddBlockButton = document.querySelector(".template-add-block-butto
 const templateLoadButton = document.querySelector(".template-load-button");
 const templateSaveButton = document.querySelector(".template-save-button");
 const templateResetButton = document.querySelector(".template-reset-button");
+const templateModeButton = document.querySelector(".template-mode-button");
+const templateCrewSettings = document.querySelector(".template-crew-settings");
+const crewUsernameInput = document.getElementById("crew-username-input");
+const crewFilehostInput = document.getElementById("crew-filehost-input");
 const templateLoadInput = document.querySelector(".template-load-input");
 const templateCopyButton = document.querySelector(".template-copy-button");
 const templatePreviewOutput = document.querySelector(".template-preview-output");
@@ -111,6 +115,13 @@ const settingsState = {
   language: "en",
   defaultTemplate: null,
   lastTemplateSaveDir: null,
+  // Template editor mode: "standard" or "crew". Determines which preset the
+  // Reset-to-Default action produces and whether crew tokens (username/filehost)
+  // are populated.
+  templateMode: "standard",
+  // Crew-only uploader settings, surfaced in the editor when crew mode is on.
+  crewUsername: "",
+  crewFilehost: "",
   // Version the user chose to skip via the update banner ("Skip this version").
   // The banner won't show again until a release newer than this appears.
   skippedUpdateVersion: null,
@@ -243,6 +254,12 @@ const translations = {
     "template.save": "Save JSON",
     "template.load": "Load JSON",
     "template.reset": "Reset to Default",
+    "template.mode.toCrew": "Switch to Crew Mode",
+    "template.mode.toStandard": "Switch to Standard Mode",
+    "template.crew.username": "Uploader name:",
+    "template.crew.filehost": "File host:",
+    "template.status.modeCrew": "Crew mode enabled. Reset to load the crew preset.",
+    "template.status.modeStandard": "Standard mode enabled. Reset to load the standard preset.",
     "template.block.title": "Title Block",
     "template.block.version": "Version Block",
     "template.block.depot_list": "Depot List Block",
@@ -419,6 +436,12 @@ const translations = {
     "template.save": "Guardar JSON",
     "template.load": "Cargar JSON",
     "template.reset": "Restablecer a predeterminado",
+    "template.mode.toCrew": "Cambiar a modo Crew",
+    "template.mode.toStandard": "Cambiar a modo estándar",
+    "template.crew.username": "Nombre del autor:",
+    "template.crew.filehost": "Servidor de archivos:",
+    "template.status.modeCrew": "Modo Crew activado. Restablece para cargar la plantilla Crew.",
+    "template.status.modeStandard": "Modo estándar activado. Restablece para cargar la plantilla estándar.",
     "template.block.title": "Bloque de título",
     "template.block.version": "Bloque de versión",
     "template.block.depot_list": "Bloque de lista de depósitos",
@@ -597,6 +620,12 @@ const translations = {
     "template.save": "Enregistrer le JSON",
     "template.load": "Charger le JSON",
     "template.reset": "Réinitialiser par défaut",
+    "template.mode.toCrew": "Passer en mode Crew",
+    "template.mode.toStandard": "Passer en mode standard",
+    "template.crew.username": "Nom de l'uploader :",
+    "template.crew.filehost": "Hébergeur de fichiers :",
+    "template.status.modeCrew": "Mode Crew activé. Réinitialisez pour charger le modèle Crew.",
+    "template.status.modeStandard": "Mode standard activé. Réinitialisez pour charger le modèle standard.",
     "template.block.title": "Bloc de titre",
     "template.block.version": "Bloc de version",
     "template.block.depot_list": "Bloc de liste des dépôts",
@@ -775,6 +804,12 @@ const translations = {
     "template.save": "JSON speichern",
     "template.load": "JSON laden",
     "template.reset": "Auf Standard zurücksetzen",
+    "template.mode.toCrew": "Zu Crew-Modus wechseln",
+    "template.mode.toStandard": "Zu Standardmodus wechseln",
+    "template.crew.username": "Uploader-Name:",
+    "template.crew.filehost": "Dateihoster:",
+    "template.status.modeCrew": "Crew-Modus aktiviert. Zurücksetzen, um die Crew-Vorlage zu laden.",
+    "template.status.modeStandard": "Standardmodus aktiviert. Zurücksetzen, um die Standardvorlage zu laden.",
     "template.block.title": "Titelblock",
     "template.block.version": "Versionsblock",
     "template.block.depot_list": "Depotlistenblock",
@@ -951,6 +986,12 @@ const translations = {
     "template.save": "Сохранить JSON",
     "template.load": "Загрузить JSON",
     "template.reset": "Сбросить по умолчанию",
+    "template.mode.toCrew": "Переключить в режим Crew",
+    "template.mode.toStandard": "Переключить в стандартный режим",
+    "template.crew.username": "Имя загрузившего:",
+    "template.crew.filehost": "Файловый хостинг:",
+    "template.status.modeCrew": "Режим Crew включён. Сбросьте, чтобы загрузить шаблон Crew.",
+    "template.status.modeStandard": "Стандартный режим включён. Сбросьте, чтобы загрузить стандартный шаблон.",
     "template.block.title": "Блок заголовка",
     "template.block.version": "Блок версии",
     "template.block.depot_list": "Блок списка депо",
@@ -1075,6 +1116,13 @@ const TEMPLATE_SINGLE_FIELDS = [
   "branch",
   "build_datetime_utc",
   "build_id",
+  // Crew-mode tokens. app_id/game_description/website come from job metadata;
+  // username/filehost come from the crew settings in the template editor.
+  "app_id",
+  "game_description",
+  "website",
+  "username",
+  "filehost",
 ];
 const TEMPLATE_DEPOT_FIELDS = ["depot_id", "depot_name", "manifest_id"];
 
@@ -1090,6 +1138,10 @@ const TEMPLATE_DEFAULT_METADATA = {
   branch: "Public",
   build_datetime_utc: "February 24, 2025 - 22:02:36 UTC",
   build_id: "4851806656204679952",
+  app_id: "2379780",
+  game_description:
+    "Balatro is a hypnotically satisfying deckbuilder where you play illegal poker hands.",
+  website: "https://www.playbalatro.com",
   depots: [
     {
       depot_id: "228989",
@@ -1160,12 +1212,42 @@ const createTemplateBlock = (type) => ({
   config: { ...(TEMPLATE_DEFAULTS[type] || {}) },
 });
 
-const createDefaultTemplate = () => [
+const createStandardTemplate = () => [
   createTemplateBlock("title"),
   createTemplateBlock("version"),
   createTemplateBlock("depot_list"),
   createTemplateBlock("uploaded_version"),
 ];
+
+// Store-header body for the crew preset. `#UploadDate#` is an intentional
+// literal placeholder the user edits by hand after uploading. Kept in sync with
+// CREW_HEADER_FREETEXT in template_renderer.rs.
+const CREW_HEADER_FREETEXT =
+  "[img]https://steamcdn-a.akamaihd.net/steam/apps/{{app_id}}/header.jpg[/img]\n\n\n" +
+  "[color=red][b]About This Game:[/b][/color]\n" +
+  "[img]https://steamstore-a.akamaihd.net/public/images/v6/maincol_gradient_rule.png[/img]\n" +
+  "{{game_description}}\n\n" +
+  "[color=red][b]Official Site:[/b][/color]\n" +
+  "[url]https://store.steampowered.com/app/{{app_id}}/[/url]\n" +
+  "[url]{{website}}[/url]\n\n" +
+  "[color=red][b]Download Links:[/b][/color]\n" +
+  "[list][color=yellow][b]Mirror 1[/b][/color]\n" +
+  "[url=][color=cyan]{{game_name}}[/color] | [color=#FF8000]#UploadDate#[/color][/url] " +
+  "({{filehost}}) [i]< uploaded by {{username}} >[/i][/list]\n\n\n" +
+  "[color=red][b]{{game_name}}[/b][/color]";
+
+const createCrewTemplate = () => {
+  const header = createTemplateBlock("free_text");
+  header.config = { text: CREW_HEADER_FREETEXT };
+  return [header, createTemplateBlock("depot_list"), createTemplateBlock("uploaded_version")];
+};
+
+// Returns the default block list for the active template mode. The mode toggle
+// and Reset-to-Default both route through this.
+const createDefaultTemplate = () =>
+  settingsState.templateMode === "crew"
+    ? createCrewTemplate()
+    : createStandardTemplate();
 
 const loadDefaultTemplateFromSettings = () => {
   if (!settingsState.defaultTemplate) {
@@ -1249,8 +1331,46 @@ const loadTemplateMetadata = async () => {
   syncTemplatePreviewMeta();
 };
 
+// Reflects the active template mode in the toggle button label and crew-only
+// inputs. Crew inputs are hidden (and irrelevant to rendering) in standard mode.
+const syncTemplateModeUI = () => {
+  const isCrew = settingsState.templateMode === "crew";
+  if (templateModeButton) {
+    templateModeButton.textContent = isCrew
+      ? t("template.mode.toStandard")
+      : t("template.mode.toCrew");
+  }
+  if (templateCrewSettings) {
+    templateCrewSettings.hidden = !isCrew;
+  }
+  if (crewUsernameInput) {
+    crewUsernameInput.value = settingsState.crewUsername || "";
+  }
+  if (crewFilehostInput) {
+    crewFilehostInput.value = settingsState.crewFilehost || "";
+  }
+};
+
+// Flips between standard and crew mode. The mode change alone does not rewrite
+// the current blocks; it selects which preset Reset-to-Default produces and
+// toggles the crew inputs. The status line nudges the user to reset to load the
+// matching preset.
+const toggleTemplateMode = () => {
+  settingsState.templateMode =
+    settingsState.templateMode === "crew" ? "standard" : "crew";
+  saveSettings();
+  syncTemplateModeUI();
+  setTemplateStatus(
+    settingsState.templateMode === "crew"
+      ? t("template.status.modeCrew")
+      : t("template.status.modeStandard")
+  );
+  renderTemplatePreview();
+};
+
 const openTemplateEditor = async () => {
   templateModalOverlay?.classList.add("active");
+  syncTemplateModeUI();
   await syncTemplateStorage();
   if (templateState.blocks.length === 0) {
     const storedBlocks = loadDefaultTemplateFromSettings();
@@ -1481,6 +1601,19 @@ const renderTemplateOutput = (blocks, metadata) => {
     branch: metadata.branch || "",
     build_datetime_utc: metadata.build_datetime_utc || "",
     build_id: metadata.build_id || "",
+    app_id: metadata.app_id || "",
+    game_description: metadata.game_description || "",
+    website: metadata.website || "",
+    // Crew settings only apply in crew mode; empty (yielding blank tokens)
+    // otherwise so standard templates are unaffected.
+    username:
+      settingsState.templateMode === "crew"
+        ? settingsState.crewUsername || ""
+        : "",
+    filehost:
+      settingsState.templateMode === "crew"
+        ? settingsState.crewFilehost || ""
+        : "",
   };
   const depots = Array.isArray(metadata.depots) ? metadata.depots : [];
   const outputParts = [];
@@ -1845,6 +1978,7 @@ const applyTranslations = () => {
   refreshQrModalText();
   if (templateModalOverlay?.classList.contains("active")) {
     populateTemplateBlockSelect();
+    syncTemplateModeUI();
     renderTemplateBuilder();
     syncTemplatePreviewMeta();
     renderTemplatePreview();
@@ -1899,6 +2033,15 @@ const loadSettings = () => {
       }
       if (typeof parsed.skippedUpdateVersion === "string") {
         settingsState.skippedUpdateVersion = parsed.skippedUpdateVersion;
+      }
+      if (parsed.templateMode === "crew" || parsed.templateMode === "standard") {
+        settingsState.templateMode = parsed.templateMode;
+      }
+      if (typeof parsed.crewUsername === "string") {
+        settingsState.crewUsername = parsed.crewUsername;
+      }
+      if (typeof parsed.crewFilehost === "string") {
+        settingsState.crewFilehost = parsed.crewFilehost;
       }
     }
     if (
@@ -3029,6 +3172,12 @@ const buildJobMetadata = (job) => ({
   compressionPassword: settingsState.compressionPassword,
   customCompressionArgs: settingsState.customCompressionArgs,
   splitVolumeSize: resolveSplitVolumeSize(),
+  // Crew tokens only flow to the generated file when crew mode is active; empty
+  // otherwise so standard jobs render identically.
+  crewUsername:
+    settingsState.templateMode === "crew" ? settingsState.crewUsername : "",
+  crewFilehost:
+    settingsState.templateMode === "crew" ? settingsState.crewFilehost : "",
 });
 
 const startJob = async () => {
@@ -3596,6 +3745,28 @@ if (templateSaveButton) {
 if (templateResetButton) {
   templateResetButton.addEventListener("click", () => {
     void resetTemplateToDefault();
+  });
+}
+
+if (templateModeButton) {
+  templateModeButton.addEventListener("click", () => {
+    toggleTemplateMode();
+  });
+}
+
+if (crewUsernameInput) {
+  crewUsernameInput.addEventListener("input", () => {
+    settingsState.crewUsername = crewUsernameInput.value;
+    saveSettings();
+    renderTemplatePreview();
+  });
+}
+
+if (crewFilehostInput) {
+  crewFilehostInput.addEventListener("input", () => {
+    settingsState.crewFilehost = crewFilehostInput.value;
+    saveSettings();
+    renderTemplatePreview();
   });
 }
 

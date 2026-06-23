@@ -19,6 +19,17 @@ pub struct TemplateMetadata {
     pub branch: String,
     pub build_datetime_utc: String,
     pub build_id: String,
+    /// Steam App ID. Used by the crew preset for the header image and store URL.
+    pub app_id: String,
+    /// Short store description (from job.json). Empty when unavailable.
+    pub game_description: String,
+    /// Official website URL (from job.json), or empty when none.
+    pub website: String,
+    /// Uploader handle. Sourced from crew-mode settings, not job.json, so it is
+    /// populated separately after construction (empty by default).
+    pub username: String,
+    /// File host label. Sourced from crew-mode settings, not job.json.
+    pub filehost: String,
     pub depots: Vec<TemplateDepot>,
 }
 
@@ -55,8 +66,22 @@ impl TemplateMetadata {
             branch: metadata.branch.clone(),
             build_datetime_utc,
             build_id: metadata.build_id.clone(),
+            app_id: metadata.appid.clone(),
+            game_description: metadata.game_description.clone(),
+            website: metadata.website.clone().unwrap_or_default(),
+            // Crew-mode settings are injected later via set_crew_fields; default
+            // to empty so non-crew jobs render exactly as before.
+            username: String::new(),
+            filehost: String::new(),
             depots,
         }
+    }
+
+    /// Applies crew-mode settings (uploader handle, file host) that originate
+    /// from the frontend rather than job.json.
+    pub fn set_crew_fields(&mut self, username: String, filehost: String) {
+        self.username = username;
+        self.filehost = filehost;
     }
 }
 

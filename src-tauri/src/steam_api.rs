@@ -16,6 +16,10 @@ struct AppData {
     name: String,
     #[serde(default)]
     steam_appid: u64,
+    #[serde(default)]
+    short_description: String,
+    #[serde(default)]
+    website: Option<String>,
 }
 
 /// Information fetched from Steam's public API
@@ -26,6 +30,10 @@ pub struct SteamAppInfo {
     /// Steam App ID (as returned by API)
     #[allow(dead_code)] // Fetched from API but not currently used; kept for debugging/future use
     pub steam_appid: u64,
+    /// Short marketing description from the store page.
+    pub short_description: String,
+    /// Official website URL, normalized to https when present.
+    pub website: Option<String>,
 }
 
 /// Depot IDs belonging to the Steamworks Common Redistributables app (228980).
@@ -158,7 +166,21 @@ pub fn fetch_app_info(appid: &str) -> Result<SteamAppInfo, String> {
     Ok(SteamAppInfo {
         name: data.name.clone(),
         steam_appid: data.steam_appid,
+        short_description: data.short_description.clone(),
+        website: data.website.as_deref().map(normalize_https),
     })
+}
+
+/// Upgrades a bare `http://` URL to `https://`. Unlike a naive
+/// `replace("http", "https")` (which turns an existing `https://` into the
+/// invalid `httpss://`), this only rewrites the scheme prefix when it is exactly
+/// `http://`, and leaves already-secure or non-http URLs untouched.
+fn normalize_https(url: &str) -> String {
+    if let Some(rest) = url.strip_prefix("http://") {
+        format!("https://{}", rest)
+    } else {
+        url.to_string()
+    }
 }
 
 /// Sanitizes a game name for use as a filesystem path segment (the top-level
@@ -207,6 +229,20 @@ pub fn sanitize_game_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_normalize_https() {
+        // Bare http is upgraded.
+        assert_eq!(normalize_https("http://example.com"), "https://example.com");
+        // Already-secure URLs are untouched (regression for the SSP
+        // `replace("http","https")` bug that produced "httpss://").
+        assert_eq!(normalize_https("https://example.com"), "https://example.com");
+        // http appearing later in the string is not mangled.
+        assert_eq!(
+            normalize_https("https://example.com/http-guide"),
+            "https://example.com/http-guide"
+        );
+    }
 
     #[test]
     fn test_sanitize_game_name_basic() {
