@@ -287,6 +287,21 @@ const translations = {
     "template.field.depotTitle": "Spoiler title",
     "template.field.depotLine": "Depot line template",
     "template.field.useCode": "Wrap in [code=text]",
+    "template.help.chipHint": "Insert:",
+    "template.help.crewOnly": "(only set in Crew mode)",
+    "template.help.field.game_name": "The game's name (e.g. Balatro).",
+    "template.help.field.os": "The operating system you downloaded for (e.g. Windows x64).",
+    "template.help.field.branch": "The Steam branch (e.g. public).",
+    "template.help.field.build_datetime_utc": "When this build was published, in UTC.",
+    "template.help.field.build_id": "Steam's numeric build ID for this version.",
+    "template.help.field.app_id": "The Steam App ID number.",
+    "template.help.field.game_description": "The game's store description text.",
+    "template.help.field.website": "The game's official website URL.",
+    "template.help.field.username": "Your uploader name from Crew settings.",
+    "template.help.field.filehost": "The file host from Crew settings.",
+    "template.help.field.depot_id": "The depot's numeric ID.",
+    "template.help.field.depot_name": "The depot's name.",
+    "template.help.field.manifest_id": "The depot's manifest ID number.",
     "template.action.up": "Move up",
     "template.action.down": "Move down",
     "template.action.remove": "Remove",
@@ -481,6 +496,21 @@ const translations = {
     "template.field.depotTitle": "Título del spoiler",
     "template.field.depotLine": "Plantilla de línea de depósito",
     "template.field.useCode": "Envolver en [code=text]",
+    "template.help.chipHint": "Insertar:",
+    "template.help.crewOnly": "(solo se define en modo Crew)",
+    "template.help.field.game_name": "El nombre del juego (p. ej. Balatro).",
+    "template.help.field.os": "El sistema operativo que descargaste (p. ej. Windows x64).",
+    "template.help.field.branch": "La rama de Steam (p. ej. public).",
+    "template.help.field.build_datetime_utc": "Cuándo se publicó esta compilación, en UTC.",
+    "template.help.field.build_id": "El ID numérico de compilación de Steam para esta versión.",
+    "template.help.field.app_id": "El número de App ID de Steam.",
+    "template.help.field.game_description": "El texto de descripción de la tienda del juego.",
+    "template.help.field.website": "La URL del sitio web oficial del juego.",
+    "template.help.field.username": "Tu nombre de uploader de la configuración Crew.",
+    "template.help.field.filehost": "El servidor de archivos de la configuración Crew.",
+    "template.help.field.depot_id": "El ID numérico del depósito.",
+    "template.help.field.depot_name": "El nombre del depósito.",
+    "template.help.field.manifest_id": "El número de ID de manifiesto del depósito.",
     "template.action.up": "Mover arriba",
     "template.action.down": "Mover abajo",
     "template.action.remove": "Eliminar",
@@ -677,6 +707,21 @@ const translations = {
     "template.field.depotTitle": "Titre du spoiler",
     "template.field.depotLine": "Modèle de ligne de dépôt",
     "template.field.useCode": "Encadrer dans [code=text]",
+    "template.help.chipHint": "Insérer :",
+    "template.help.crewOnly": "(défini uniquement en mode Crew)",
+    "template.help.field.game_name": "Le nom du jeu (p. ex. Balatro).",
+    "template.help.field.os": "Le système d'exploitation téléchargé (p. ex. Windows x64).",
+    "template.help.field.branch": "La branche Steam (p. ex. public).",
+    "template.help.field.build_datetime_utc": "Date de publication de cette version, en UTC.",
+    "template.help.field.build_id": "L'identifiant numérique de build Steam de cette version.",
+    "template.help.field.app_id": "Le numéro d'App ID Steam.",
+    "template.help.field.game_description": "Le texte de description de la boutique du jeu.",
+    "template.help.field.website": "L'URL du site officiel du jeu.",
+    "template.help.field.username": "Votre nom d'uploader depuis les paramètres Crew.",
+    "template.help.field.filehost": "L'hébergeur de fichiers depuis les paramètres Crew.",
+    "template.help.field.depot_id": "L'identifiant numérique du dépôt.",
+    "template.help.field.depot_name": "Le nom du dépôt.",
+    "template.help.field.manifest_id": "Le numéro d'ID de manifeste du dépôt.",
     "template.action.up": "Monter",
     "template.action.down": "Descendre",
     "template.action.remove": "Supprimer",
@@ -873,6 +918,21 @@ const translations = {
     "template.field.depotTitle": "Spoiler-Titel",
     "template.field.depotLine": "Depotzeilen-Vorlage",
     "template.field.useCode": "In [code=text] einschließen",
+    "template.help.chipHint": "Einfügen:",
+    "template.help.crewOnly": "(nur im Crew-Modus gesetzt)",
+    "template.help.field.game_name": "Der Name des Spiels (z. B. Balatro).",
+    "template.help.field.os": "Das heruntergeladene Betriebssystem (z. B. Windows x64).",
+    "template.help.field.branch": "Der Steam-Branch (z. B. public).",
+    "template.help.field.build_datetime_utc": "Wann dieser Build veröffentlicht wurde, in UTC.",
+    "template.help.field.build_id": "Steams numerische Build-ID für diese Version.",
+    "template.help.field.app_id": "Die Steam-App-ID-Nummer.",
+    "template.help.field.game_description": "Der Shop-Beschreibungstext des Spiels.",
+    "template.help.field.website": "Die offizielle Website-URL des Spiels.",
+    "template.help.field.username": "Dein Uploader-Name aus den Crew-Einstellungen.",
+    "template.help.field.filehost": "Der Filehost aus den Crew-Einstellungen.",
+    "template.help.field.depot_id": "Die numerische Depot-ID.",
+    "template.help.field.depot_name": "Der Name des Depots.",
+    "template.help.field.manifest_id": "Die Manifest-ID-Nummer des Depots.",
     "template.action.up": "Nach oben",
     "template.action.down": "Nach unten",
     "template.action.remove": "Entfernen",
@@ -1067,6 +1127,21 @@ const translations = {
     "template.field.depotTitle": "Заголовок спойлера",
     "template.field.depotLine": "Шаблон строки депо",
     "template.field.useCode": "Обернуть в [code=text]",
+    "template.help.chipHint": "Вставить:",
+    "template.help.crewOnly": "(задаётся только в режиме Crew)",
+    "template.help.field.game_name": "Название игры (например, Balatro).",
+    "template.help.field.os": "Операционная система, для которой вы скачали (например, Windows x64).",
+    "template.help.field.branch": "Ветка Steam (например, public).",
+    "template.help.field.build_datetime_utc": "Когда была опубликована эта сборка, в UTC.",
+    "template.help.field.build_id": "Числовой ID сборки Steam для этой версии.",
+    "template.help.field.app_id": "Числовой App ID в Steam.",
+    "template.help.field.game_description": "Текст описания игры из магазина.",
+    "template.help.field.website": "URL официального сайта игры.",
+    "template.help.field.username": "Ваше имя загрузчика из настроек Crew.",
+    "template.help.field.filehost": "Файловый хостинг из настроек Crew.",
+    "template.help.field.depot_id": "Числовой ID депо.",
+    "template.help.field.depot_name": "Название депо.",
+    "template.help.field.manifest_id": "Числовой ID манифеста депо.",
     "template.action.up": "Вверх",
     "template.action.down": "Вниз",
     "template.action.remove": "Удалить",
@@ -1193,6 +1268,15 @@ const TEMPLATE_SINGLE_FIELDS = [
   "filehost",
 ];
 const TEMPLATE_DEPOT_FIELDS = ["depot_id", "depot_name", "manifest_id"];
+
+// Fields whose value is only populated in Crew mode (see renderTemplateOutput).
+// In Standard mode their token renders blank; the chip tooltip notes this.
+const TEMPLATE_CREW_ONLY_FIELDS = new Set(["username", "filehost"]);
+
+// i18n description key per token, shown as a chip tooltip so users know what a
+// token does without leaving the editor. Keyed by field name so the chip rows
+// (built by iterating the field arrays above) can never drift from the engine.
+const templateFieldDescKey = (field) => `template.help.field.${field}`;
 
 // Canonical OmniPacker credit line. Single source of truth on the JS side;
 // the backend renderer (template_renderer.rs) has a matching constant.
@@ -1558,6 +1642,56 @@ const addTemplateBlock = (type) => {
   renderTemplatePreview();
 };
 
+// Inserts `{{field}}` into `input` at the caret (or appends to the end if the
+// input isn't focused), then persists via the block's existing config key.
+const insertTemplateToken = (input, blockId, configKey, field) => {
+  const token = `{{${field}}}`;
+  const focused = document.activeElement === input;
+  const start = focused ? input.selectionStart : input.value.length;
+  const end = focused ? input.selectionEnd : input.value.length;
+  const next = input.value.slice(0, start) + token + input.value.slice(end);
+  input.value = next;
+  input.focus();
+  const caret = start + token.length;
+  input.setSelectionRange(caret, caret);
+  updateTemplateBlockConfig(blockId, { [configKey]: next });
+};
+
+// Builds a row of click-to-insert token chips beneath a block's text input, one
+// per field the block accepts. Iterating the field arrays keeps the chips in
+// lockstep with the render engine (add a field there -> a chip appears here).
+const appendTemplateChipRow = (parentEl, input, blockId, configKey, fields) => {
+  const row = document.createElement("div");
+  row.className = "template-chip-row";
+
+  const hint = document.createElement("span");
+  hint.className = "template-chip-hint";
+  hint.textContent = t("template.help.chipHint");
+  row.appendChild(hint);
+
+  fields.forEach((field) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "template-chip";
+    chip.textContent = `{{${field}}}`;
+    const crewOnly = TEMPLATE_CREW_ONLY_FIELDS.has(field);
+    if (crewOnly) {
+      chip.classList.add("template-chip-crew");
+    }
+    const desc = t(templateFieldDescKey(field));
+    chip.title = crewOnly ? `${desc} ${t("template.help.crewOnly")}` : desc;
+    // mousedown + preventDefault keeps the text input focused so the caret
+    // position survives the click (a plain click would steal focus first).
+    chip.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      insertTemplateToken(input, blockId, configKey, field);
+    });
+    row.appendChild(chip);
+  });
+
+  parentEl.appendChild(row);
+};
+
 const renderTemplateBuilder = () => {
   if (!templateBlocksContainer) {
     return;
@@ -1618,6 +1752,7 @@ const renderTemplateBuilder = () => {
       );
       field.appendChild(label);
       field.appendChild(input);
+      appendTemplateChipRow(field, input, block.id, "template", TEMPLATE_SINGLE_FIELDS);
       blockEl.appendChild(field);
     }
 
@@ -1633,6 +1768,7 @@ const renderTemplateBuilder = () => {
       );
       field.appendChild(label);
       field.appendChild(textarea);
+      appendTemplateChipRow(field, textarea, block.id, "text", TEMPLATE_SINGLE_FIELDS);
       blockEl.appendChild(field);
     }
 
@@ -1663,6 +1799,7 @@ const renderTemplateBuilder = () => {
       );
       lineField.appendChild(lineLabel);
       lineField.appendChild(lineInput);
+      appendTemplateChipRow(lineField, lineInput, block.id, "lineTemplate", TEMPLATE_DEPOT_FIELDS);
       blockEl.appendChild(lineField);
 
       const codeRow = document.createElement("label");

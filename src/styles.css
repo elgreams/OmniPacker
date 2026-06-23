@@ -1048,6 +1048,39 @@ html[lang="de"] .add-to-queue {
   resize: vertical;
 }
 
+.template-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.template-chip-hint {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-right: 2px;
+}
+
+.template-chip {
+  padding: 1px 6px;
+  font-size: 11px;
+  font-family: monospace;
+  background: #3c3c3c;
+  border: 1px solid #505050;
+  color: #d0d0d0;
+  cursor: pointer;
+}
+
+.template-chip:hover {
+  background: #4a4a4a;
+}
+
+.template-chip-crew {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
 .template-file-actions {
   display: flex;
   align-items: center;
