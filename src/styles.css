@@ -381,14 +381,146 @@ button {
   width: 100%;
 }
 
-.branch-row {
-  grid-template-columns: auto 1fr;
-}
-
 .checkbox-row {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* Custom multi-select checkbox dropdown (OS + Branch) */
+.checkbox-dropdown {
+  position: relative;
+  min-width: 0;
+}
+
+.checkbox-dropdown-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: #3c3c3c;
+  color: #e6e6e6;
+  border: 1px solid #505050;
+  padding: 4px 8px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.checkbox-dropdown-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checkbox-dropdown-caret {
+  flex: 0 0 auto;
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.checkbox-dropdown-panel {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: #2d2c2d;
+  border: 1px solid #505050;
+  padding: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+/* Flip the panel above the button when there isn't room below (set in JS). */
+.checkbox-dropdown.drop-up .checkbox-dropdown-panel {
+  top: auto;
+  bottom: calc(100% + 2px);
+}
+
+/* The branch panel rows pack a name, password field and remove button, so the
+   panel needs more width than the button it hangs off of. */
+#branch-dropdown .checkbox-dropdown-panel {
+  right: auto;
+  min-width: 340px;
+}
+
+.checkbox-dropdown-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.checkbox-dropdown-option:hover {
+  background: #3c3c3c;
+}
+
+.checkbox-dropdown-option input {
+  margin: 0;
+}
+
+.branch-options {
+  display: flex;
+  flex-direction: column;
+}
+
+.branch-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+}
+
+.branch-option:hover {
+  background: #3c3c3c;
+}
+
+.branch-option-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.branch-option-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-option-password {
+  width: 110px;
+  flex: 0 0 auto;
+}
+
+.branch-option-remove {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.branch-add-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 6px 2px;
+  border-top: 1px solid #505050;
+}
+
+.branch-add-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.branch-add-button {
+  flex: 0 0 auto;
+  padding: 4px 12px;
 }
 
 .start-panel {
@@ -1004,7 +1136,8 @@ input:disabled {
 }
 
 .form-inputs-disabled input:not([type="checkbox"]),
-.form-inputs-disabled select {
+.form-inputs-disabled select,
+.form-inputs-disabled .checkbox-dropdown-button {
   opacity: 0.6;
   cursor: not-allowed;
 }

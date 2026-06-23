@@ -80,27 +80,82 @@
                 <button type="button" class="add-to-queue" data-i18n="game.add">Add to Queue</button>
               </div>
               <div class="form-row">
-                <label for="os-select" data-i18n="game.os">OS:</label>
-                <select id="os-select">
-                  <option value="Windows x64" data-i18n="os.windowsX64">Windows x64</option>
-                  <option value="Windows x86" data-i18n="os.windowsX86">Windows x86</option>
-                  <option value="Linux" data-i18n="os.linux">Linux</option>
-                  <option value="macOS" data-i18n="os.macos">MacOS</option>
-                </select>
+                <label data-i18n="game.os">OS:</label>
+                <div class="checkbox-dropdown" id="os-dropdown">
+                  <button
+                    type="button"
+                    class="checkbox-dropdown-button"
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                  >
+                    <span class="checkbox-dropdown-summary"></span>
+                    <span class="checkbox-dropdown-caret" aria-hidden="true">▾</span>
+                  </button>
+                  <div class="checkbox-dropdown-panel" hidden>
+                    <label class="checkbox-dropdown-option">
+                      <input type="checkbox" value="Windows x64" checked />
+                      <span data-i18n="os.windowsX64">Windows x64</span>
+                    </label>
+                    <label class="checkbox-dropdown-option">
+                      <input type="checkbox" value="Windows x86" />
+                      <span data-i18n="os.windowsX86">Windows x86</span>
+                    </label>
+                    <label class="checkbox-dropdown-option">
+                      <input type="checkbox" value="Linux x64" />
+                      <span data-i18n="os.linuxX64">Linux x64</span>
+                    </label>
+                    <label class="checkbox-dropdown-option">
+                      <input type="checkbox" value="Linux x86" />
+                      <span data-i18n="os.linuxX86">Linux x86</span>
+                    </label>
+                    <label class="checkbox-dropdown-option">
+                      <input type="checkbox" value="macOS x64" />
+                      <span data-i18n="os.macosX64">macOS x64</span>
+                    </label>
+                    <label class="checkbox-dropdown-option">
+                      <input type="checkbox" value="macOS arm64" />
+                      <span data-i18n="os.macosArm64">macOS arm64</span>
+                    </label>
+                  </div>
+                </div>
               </div>
             </section>
 
             <section class="panel" aria-label="Branch Manager">
               <div class="panel-title" data-i18n="branch.title">Branch Manager</div>
-              <div class="form-row branch-row">
-                <label for="branch" data-i18n="branch.label">Branch to download:</label>
-                <input id="branch" type="text" />
+              <div class="form-row">
+                <label data-i18n="branch.label">Branch to download:</label>
+                <div class="checkbox-dropdown" id="branch-dropdown">
+                  <button
+                    type="button"
+                    class="checkbox-dropdown-button"
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                  >
+                    <span class="checkbox-dropdown-summary"></span>
+                    <span class="checkbox-dropdown-caret" aria-hidden="true">▾</span>
+                  </button>
+                  <div class="checkbox-dropdown-panel" hidden>
+                    <div class="branch-options" id="branch-options"></div>
+                    <div class="branch-add-row">
+                      <input
+                        id="branch-add-input"
+                        type="text"
+                        class="branch-add-input"
+                        data-i18n-placeholder="branch.addPlaceholder"
+                      />
+                      <button
+                        type="button"
+                        class="branch-add-button"
+                        id="branch-add-button"
+                        data-i18n="branch.add"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <label class="checkbox-row">
-                <input id="branch-password-toggle" type="checkbox" />
-                <span data-i18n="branch.password">Branch password? (Enter below)</span>
-              </label>
-              <input id="branch-password" type="password" disabled />
             </section>
 
             <div class="start-panel">

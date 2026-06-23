@@ -86,6 +86,8 @@ fn map_os_selection(os: &str) -> (&'static str, &'static str) {
     match os {
         "Windows x64" => ("windows", "64"),
         "Windows x86" => ("windows", "32"),
+        "Linux x64" => ("linux", "64"),
+        "Linux x86" => ("linux", "32"),
         "Linux" => ("linux", "64"),
         "macOS x64" => ("macos", "64"),
         "macOS arm64" => ("macos", "arm64"),

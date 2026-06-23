@@ -243,6 +243,8 @@ fn map_os_selection(os: &str) -> (&'static str, &'static str) {
     match os {
         "Windows x64" => ("windows", "64"),
         "Windows x86" => ("windows", "32"),
+        "Linux x64" => ("linux", "64"),
+        "Linux x86" => ("linux", "32"),
         "Linux" => ("linux", "64"),
         "macOS x64" => ("macos", "64"),
         "macOS arm64" => ("macos", "arm64"),
@@ -2094,4 +2096,24 @@ fn is_executable(path: &PathBuf) -> bool {
 #[cfg(windows)]
 fn is_executable(path: &PathBuf) -> bool {
     path.is_file()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_os_selection;
+
+    #[test]
+    fn os_selection_maps_each_arch() {
+        assert_eq!(map_os_selection("Windows x64"), ("windows", "64"));
+        assert_eq!(map_os_selection("Windows x86"), ("windows", "32"));
+        assert_eq!(map_os_selection("Linux x64"), ("linux", "64"));
+        assert_eq!(map_os_selection("Linux x86"), ("linux", "32"));
+        assert_eq!(map_os_selection("macOS x64"), ("macos", "64"));
+        assert_eq!(map_os_selection("macOS arm64"), ("macos", "arm64"));
+    }
+
+    #[test]
+    fn os_selection_falls_back_to_windows_x64() {
+        assert_eq!(map_os_selection("anything else"), ("windows", "64"));
+    }
 }

@@ -1,11 +1,12 @@
 const tabs = document.querySelectorAll(".tab");
 const panels = document.querySelectorAll(".tab-content");
-const branchToggle = document.getElementById("branch-password-toggle");
-const branchPassword = document.getElementById("branch-password");
 const qrLoginToggle = document.getElementById("qr-login-toggle");
 const appIdInput = document.getElementById("appid");
-const osSelect = document.getElementById("os-select");
-const branchInput = document.getElementById("branch");
+const osDropdown = document.getElementById("os-dropdown");
+const branchDropdown = document.getElementById("branch-dropdown");
+const branchOptionsContainer = document.getElementById("branch-options");
+const branchAddInput = document.getElementById("branch-add-input");
+const branchAddButton = document.getElementById("branch-add-button");
 const steamUsernameInput = document.getElementById("steam-username");
 const steamPasswordInput = document.getElementById("steam-password");
 const startButton = document.querySelector(".start-button");
@@ -198,7 +199,11 @@ const translations = {
     "game.os": "OS:",
     "branch.title": "Branch Manager",
     "branch.label": "Branch to download:",
-    "branch.password": "Branch password? (Enter below)",
+    "branch.add": "Add",
+    "branch.addPlaceholder": "Type a branch name",
+    "branch.passwordPlaceholder": "Password",
+    "branch.remove": "Remove branch",
+    "dropdown.none": "None selected",
     "output.open": "Open Output Folder",
     "output.conflict.title": "Output already exists",
     "output.conflict.message": "An output named \"{{name}}\" already exists.",
@@ -327,9 +332,11 @@ const translations = {
     "os.windowsX64": "Windows x64",
     "os.windowsX86": "Windows x86",
     "os.linux": "Linux",
-    "os.macos": "MacOS",
-    "os.macosX64": "MacOS",
-    "os.macosArm64": "MacOS",
+    "os.linuxX64": "Linux x64",
+    "os.linuxX86": "Linux x86",
+    "os.macos": "macOS",
+    "os.macosX64": "macOS x64",
+    "os.macosArm64": "macOS arm64",
     "alert.clearQueue": "Cannot clear queue while a job is running. Cancel the job first.",
     "dd.noDepots":
       "[system] DepotDownloader reported no depots. Verify the OS dropdown matches the target app (Windows x64 is typical).",
@@ -385,7 +392,11 @@ const translations = {
     "game.os": "SO:",
     "branch.title": "Gestor de ramas",
     "branch.label": "Rama para descargar:",
-    "branch.password": "¿Contraseña de la rama? (Ingrese abajo)",
+    "branch.add": "Agregar",
+    "branch.addPlaceholder": "Escriba un nombre de rama",
+    "branch.passwordPlaceholder": "Contraseña",
+    "branch.remove": "Eliminar rama",
+    "dropdown.none": "Ninguno seleccionado",
     "output.open": "Abrir carpeta de salida",
     "output.conflict.title": "La salida ya existe",
     "output.conflict.message":
@@ -514,9 +525,11 @@ const translations = {
     "os.windowsX64": "Windows x64",
     "os.windowsX86": "Windows x86",
     "os.linux": "Linux",
-    "os.macos": "MacOS",
-    "os.macosX64": "MacOS",
-    "os.macosArm64": "MacOS",
+    "os.linuxX64": "Linux x64",
+    "os.linuxX86": "Linux x86",
+    "os.macos": "macOS",
+    "os.macosX64": "macOS x64",
+    "os.macosArm64": "macOS arm64",
     "alert.clearQueue":
       "No se puede limpiar la cola mientras hay una tarea en ejecución. Cancele la tarea primero.",
     "dd.noDepots":
@@ -575,7 +588,11 @@ const translations = {
     "game.os": "OS:",
     "branch.title": "Gestionnaire de branches",
     "branch.label": "Branche à télécharger:",
-    "branch.password": "Mot de passe de branche ? (Saisir ci-dessous)",
+    "branch.add": "Ajouter",
+    "branch.addPlaceholder": "Saisir un nom de branche",
+    "branch.passwordPlaceholder": "Mot de passe",
+    "branch.remove": "Supprimer la branche",
+    "dropdown.none": "Aucune sélection",
     "output.open": "Ouvrir le dossier de sortie",
     "output.conflict.title": "La sortie existe déjà",
     "output.conflict.message":
@@ -704,9 +721,11 @@ const translations = {
     "os.windowsX64": "Windows x64",
     "os.windowsX86": "Windows x86",
     "os.linux": "Linux",
-    "os.macos": "MacOS",
-    "os.macosX64": "MacOS",
-    "os.macosArm64": "MacOS",
+    "os.linuxX64": "Linux x64",
+    "os.linuxX86": "Linux x86",
+    "os.macos": "macOS",
+    "os.macosX64": "macOS x64",
+    "os.macosArm64": "macOS arm64",
     "alert.clearQueue":
       "Impossible de vider la file pendant qu'une tâche est en cours. Annulez d'abord la tâche.",
     "dd.noDepots":
@@ -765,7 +784,11 @@ const translations = {
     "game.os": "OS:",
     "branch.title": "Branch-Manager",
     "branch.label": "Branch zum Download:",
-    "branch.password": "Branch-Passwort? (Unten eingeben)",
+    "branch.add": "Hinzufügen",
+    "branch.addPlaceholder": "Branch-Namen eingeben",
+    "branch.passwordPlaceholder": "Passwort",
+    "branch.remove": "Branch entfernen",
+    "dropdown.none": "Nichts ausgewählt",
     "output.open": "Ausgabeordner öffnen",
     "output.conflict.title": "Ausgabe bereits vorhanden",
     "output.conflict.message":
@@ -894,9 +917,11 @@ const translations = {
     "os.windowsX64": "Windows x64",
     "os.windowsX86": "Windows x86",
     "os.linux": "Linux",
-    "os.macos": "MacOS",
-    "os.macosX64": "MacOS",
-    "os.macosArm64": "MacOS",
+    "os.linuxX64": "Linux x64",
+    "os.linuxX86": "Linux x86",
+    "os.macos": "macOS",
+    "os.macosX64": "macOS x64",
+    "os.macosArm64": "macOS arm64",
     "alert.clearQueue":
       "Warteschlange kann nicht geleert werden, während ein Job läuft. Brechen Sie den Job zuerst ab.",
     "dd.noDepots":
@@ -953,7 +978,11 @@ const translations = {
     "game.os": "ОС:",
     "branch.title": "Менеджер веток",
     "branch.label": "Ветка для загрузки:",
-    "branch.password": "Пароль ветки? (Введите ниже)",
+    "branch.add": "Добавить",
+    "branch.addPlaceholder": "Введите имя ветки",
+    "branch.passwordPlaceholder": "Пароль",
+    "branch.remove": "Удалить ветку",
+    "dropdown.none": "Ничего не выбрано",
     "output.open": "Открыть папку вывода",
     "output.conflict.title": "Вывод уже существует",
     "output.conflict.message":
@@ -1082,9 +1111,11 @@ const translations = {
     "os.windowsX64": "Windows x64",
     "os.windowsX86": "Windows x86",
     "os.linux": "Linux",
-    "os.macos": "MacOS",
-    "os.macosX64": "MacOS",
-    "os.macosArm64": "MacOS",
+    "os.linuxX64": "Linux x64",
+    "os.linuxX86": "Linux x86",
+    "os.macos": "macOS",
+    "os.macosX64": "macOS x64",
+    "os.macosArm64": "macOS arm64",
     "alert.clearQueue":
       "Нельзя очистить очередь во время выполнения. Сначала отмените задание.",
     "dd.noDepots":
@@ -1109,10 +1140,12 @@ const translations = {
 const osLabelKeys = {
   "Windows x64": "os.windowsX64",
   "Windows x86": "os.windowsX86",
+  "Linux x64": "os.linuxX64",
+  "Linux x86": "os.linuxX86",
   Linux: "os.linux",
   macOS: "os.macos",
-  "macOS x64": "os.macos",
-  "macOS arm64": "os.macos",
+  "macOS x64": "os.macosX64",
+  "macOS arm64": "os.macosArm64",
 };
 
 const qrWaitingTextValues = Object.values(translations)
@@ -2063,6 +2096,19 @@ const applyTranslations = () => {
       element.textContent = t(key);
     }
   });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+    const key = element.dataset.i18nPlaceholder;
+    if (key) {
+      element.placeholder = t(key);
+    }
+  });
+  if (typeof updateOsSummary === "function") {
+    updateOsSummary();
+  }
+  if (typeof updateBranchSummary === "function") {
+    renderBranchOptions();
+    updateBranchSummary();
+  }
   refreshQrModalText();
   if (templateModalOverlay?.classList.contains("active")) {
     populateTemplateBlockSelect();
@@ -2270,11 +2316,11 @@ const createJobId = () => {
   return `job-${Date.now()}-${jobSequence}`;
 };
 
-const getFormSnapshot = () => ({
+// Shared credentials + appId for a queueing action. OS and branch are resolved
+// separately (see getSelectedOsValues / getSelectedBranches) so one click can
+// fan out into the cartesian product of checked OS × checked branches.
+const getCredentialSnapshot = () => ({
   appId: appIdInput?.value?.trim() || "unknown",
-  os: osSelect?.value || "unknown",
-  branch: branchInput?.value?.trim() || "public",
-  branchPassword: branchToggle?.checked ? branchPassword?.value || "" : "",
   username: steamUsernameInput?.value?.trim() || "",
   password: steamPasswordInput?.value || "",
   qrEnabled: Boolean(qrLoginToggle?.checked),
@@ -2435,6 +2481,17 @@ const isLastQueuedJob = (job) =>
 const isRunningJob = (jobId) => jobState.runningJobId === jobId;
 const isQueueRunning = () => Boolean(jobState.runningJobId);
 
+// Adding requires at least one OS and one branch checked, since one click fans
+// out into the cartesian product of the two. Also blocked while a job runs.
+const syncAddToQueueButton = () => {
+  if (!addToQueueButton) {
+    return;
+  }
+  const hasSelection =
+    getSelectedOsValues().length > 0 && getSelectedBranches().length > 0;
+  addToQueueButton.disabled = isQueueRunning() || !hasSelection;
+};
+
 const updateFormInputState = () => {
   const running = isQueueRunning();
   const qrEnabled = Boolean(qrLoginToggle?.checked);
@@ -2442,10 +2499,9 @@ const updateFormInputState = () => {
 
   // Disable form inputs
   if (appIdInput) appIdInput.disabled = running;
-  if (osSelect) osSelect.disabled = running;
-  if (branchInput) branchInput.disabled = running;
-  if (branchPassword) branchPassword.disabled = running || !branchToggle?.checked;
-  if (addToQueueButton) addToQueueButton.disabled = running;
+  setDropdownDisabled(osDropdown, running);
+  setDropdownDisabled(branchDropdown, running);
+  syncAddToQueueButton();
 
   // Disable credentials (QR or saved login lock)
   if (steamUsernameInput) {
@@ -3027,13 +3083,261 @@ tabs.forEach((tab) => {
   });
 });
 
-if (branchToggle && branchPassword) {
-  const syncBranchPassword = () => {
-    branchPassword.disabled = !branchToggle.checked;
-  };
-  branchToggle.addEventListener("change", syncBranchPassword);
-  syncBranchPassword();
+// ── Custom checkbox dropdowns (OS + Branch) ───────────────────────────────
+// Both the OS panel and the Branch panel are framework-free dropdowns: a button
+// shows a summary of the current selection and opens a panel of checkboxes.
+// "Add to Queue" then fans out across the cartesian product of the checked OS
+// arches and the checked branches (see addJobToQueue).
+
+const getDropdownButton = (dropdown) =>
+  dropdown?.querySelector(".checkbox-dropdown-button") || null;
+
+const getDropdownPanel = (dropdown) =>
+  dropdown?.querySelector(".checkbox-dropdown-panel") || null;
+
+const getDropdownSummaryEl = (dropdown) =>
+  dropdown?.querySelector(".checkbox-dropdown-summary") || null;
+
+const closeDropdown = (dropdown) => {
+  const button = getDropdownButton(dropdown);
+  const panel = getDropdownPanel(dropdown);
+  if (!button || !panel) {
+    return;
+  }
+  panel.hidden = true;
+  dropdown.classList.remove("drop-up");
+  button.setAttribute("aria-expanded", "false");
+};
+
+// Open the panel above the button when there isn't enough room below it (e.g.
+// the Branch panel near the bottom of the window would otherwise overflow).
+const positionDropdownPanel = (dropdown) => {
+  const button = getDropdownButton(dropdown);
+  const panel = getDropdownPanel(dropdown);
+  if (!button || !panel) {
+    return;
+  }
+  const buttonRect = button.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - buttonRect.bottom;
+  const spaceAbove = buttonRect.top;
+  const needed = panel.offsetHeight + 4;
+  const dropUp = spaceBelow < needed && spaceAbove > spaceBelow;
+  dropdown.classList.toggle("drop-up", dropUp);
+};
+
+const closeAllDropdowns = (except) => {
+  [osDropdown, branchDropdown].forEach((dropdown) => {
+    if (dropdown && dropdown !== except) {
+      closeDropdown(dropdown);
+    }
+  });
+};
+
+const toggleDropdown = (dropdown) => {
+  const button = getDropdownButton(dropdown);
+  const panel = getDropdownPanel(dropdown);
+  if (!button || !panel || button.disabled) {
+    return;
+  }
+  const willOpen = panel.hidden;
+  closeAllDropdowns(dropdown);
+  panel.hidden = !willOpen;
+  button.setAttribute("aria-expanded", willOpen ? "true" : "false");
+  if (willOpen) {
+    // Panel must be visible before we can measure its height.
+    positionDropdownPanel(dropdown);
+  }
+};
+
+const setDropdownDisabled = (dropdown, disabled) => {
+  const button = getDropdownButton(dropdown);
+  if (!button) {
+    return;
+  }
+  button.disabled = disabled;
+  if (disabled) {
+    closeDropdown(dropdown);
+  }
+};
+
+// ── OS dropdown ───────────────────────────────────────────────────────────
+const getOsCheckboxes = () =>
+  osDropdown
+    ? Array.from(osDropdown.querySelectorAll(".checkbox-dropdown-option input"))
+    : [];
+
+const getSelectedOsValues = () =>
+  getOsCheckboxes()
+    .filter((box) => box.checked)
+    .map((box) => box.value);
+
+const updateOsSummary = () => {
+  const summary = getDropdownSummaryEl(osDropdown);
+  if (!summary) {
+    return;
+  }
+  const selected = getSelectedOsValues();
+  if (selected.length === 0) {
+    summary.textContent = t("dropdown.none");
+  } else {
+    summary.textContent = selected.map((os) => formatOsLabel(os)).join(", ");
+  }
+};
+
+if (osDropdown) {
+  const button = getDropdownButton(osDropdown);
+  if (button) {
+    button.addEventListener("click", () => toggleDropdown(osDropdown));
+  }
+  getOsCheckboxes().forEach((box) => {
+    box.addEventListener("change", () => {
+      updateOsSummary();
+      syncAddToQueueButton();
+    });
+  });
+  updateOsSummary();
 }
+
+// ── Branch dropdown ───────────────────────────────────────────────────────
+// `public` is always present and cannot be removed. Typed branches are stored
+// in branchState and rendered as rows with an inline optional password field.
+const branchState = {
+  // entries: { name, checked, password, removable }
+  entries: [{ name: "public", checked: true, password: "", removable: false }],
+};
+
+const getSelectedBranches = () =>
+  branchState.entries
+    .filter((entry) => entry.checked)
+    .map((entry) => ({ name: entry.name, password: entry.password || "" }));
+
+const updateBranchSummary = () => {
+  const summary = getDropdownSummaryEl(branchDropdown);
+  if (!summary) {
+    return;
+  }
+  const selected = getSelectedBranches();
+  if (selected.length === 0) {
+    summary.textContent = t("dropdown.none");
+  } else {
+    summary.textContent = selected.map((entry) => entry.name).join(", ");
+  }
+};
+
+const renderBranchOptions = () => {
+  if (!branchOptionsContainer) {
+    return;
+  }
+  branchOptionsContainer.textContent = "";
+  branchState.entries.forEach((entry, index) => {
+    const row = document.createElement("div");
+    row.className = "branch-option";
+
+    const main = document.createElement("label");
+    main.className = "branch-option-main";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = entry.checked;
+    checkbox.addEventListener("change", () => {
+      entry.checked = checkbox.checked;
+      updateBranchSummary();
+      syncAddToQueueButton();
+    });
+
+    const name = document.createElement("span");
+    name.className = "branch-option-name";
+    name.textContent = entry.name;
+
+    main.appendChild(checkbox);
+    main.appendChild(name);
+    row.appendChild(main);
+
+    const passwordInput = document.createElement("input");
+    passwordInput.type = "password";
+    passwordInput.className = "branch-option-password";
+    passwordInput.value = entry.password || "";
+    passwordInput.placeholder = t("branch.passwordPlaceholder");
+    passwordInput.addEventListener("input", () => {
+      entry.password = passwordInput.value;
+    });
+    row.appendChild(passwordInput);
+
+    if (entry.removable) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "branch-option-remove";
+      remove.textContent = "✕";
+      remove.title = t("branch.remove");
+      remove.addEventListener("click", () => {
+        branchState.entries.splice(index, 1);
+        renderBranchOptions();
+        updateBranchSummary();
+        syncAddToQueueButton();
+      });
+      row.appendChild(remove);
+    }
+
+    branchOptionsContainer.appendChild(row);
+  });
+};
+
+const addBranchEntry = () => {
+  if (!branchAddInput) {
+    return;
+  }
+  const name = branchAddInput.value.trim();
+  if (!name) {
+    return;
+  }
+  const exists = branchState.entries.some(
+    (entry) => entry.name.toLowerCase() === name.toLowerCase(),
+  );
+  if (exists) {
+    branchAddInput.value = "";
+    return;
+  }
+  branchState.entries.push({
+    name,
+    checked: true,
+    password: "",
+    removable: true,
+  });
+  branchAddInput.value = "";
+  renderBranchOptions();
+  updateBranchSummary();
+  syncAddToQueueButton();
+};
+
+if (branchDropdown) {
+  const button = getDropdownButton(branchDropdown);
+  if (button) {
+    button.addEventListener("click", () => toggleDropdown(branchDropdown));
+  }
+  if (branchAddButton) {
+    branchAddButton.addEventListener("click", addBranchEntry);
+  }
+  if (branchAddInput) {
+    branchAddInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        addBranchEntry();
+      }
+    });
+  }
+  renderBranchOptions();
+  updateBranchSummary();
+}
+
+// Close dropdowns when clicking outside of them.
+document.addEventListener("click", (event) => {
+  if (osDropdown && !osDropdown.contains(event.target)) {
+    closeDropdown(osDropdown);
+  }
+  if (branchDropdown && !branchDropdown.contains(event.target)) {
+    closeDropdown(branchDropdown);
+  }
+});
 
 const tauriEvent = window.__TAURI__?.event;
 const tauriInvoke = window.__TAURI__?.core?.invoke;
@@ -3468,15 +3772,36 @@ const deleteSavedLoginDetails = async () => {
   }
 };
 
+// One "Add to Queue" click fans out into the cartesian product of the checked
+// OS arches and the checked branches, all sharing the same credentials. With a
+// single OS and a single branch this behaves exactly like the old single-job
+// flow.
 const addJobToQueue = () => {
-  const job = createJob(getFormSnapshot());
-  job.status = "queued";
-  jobState.selectedJobId = job.id;
+  const credentials = getCredentialSnapshot();
+  const osValues = getSelectedOsValues();
+  const branches = getSelectedBranches();
+  if (osValues.length === 0 || branches.length === 0) {
+    return;
+  }
+
+  let lastJob = null;
+  osValues.forEach((os) => {
+    branches.forEach((branch) => {
+      lastJob = createJob({
+        ...credentials,
+        os,
+        branch: branch.name,
+        branchPassword: branch.password,
+      });
+      lastJob.status = "queued";
+    });
+  });
+
+  if (lastJob) {
+    jobState.selectedJobId = lastJob.id;
+  }
   if (appIdInput) {
     appIdInput.value = "";
-  }
-  if (branchInput) {
-    branchInput.value = "public";
   }
   renderAll();
 };
@@ -4113,10 +4438,6 @@ void syncTemplateStorage();
 applySettingsToUI();
 applyDefaultQrLogin();
 void loadSavedLoginDetails();
-
-if (branchInput && !branchInput.value) {
-  branchInput.value = "public";
-}
 
 // Scale the fixed-size UI to fit the window, preserving proportions.
 // Below the design size: use CSS transform to shrink proportionally.
