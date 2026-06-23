@@ -77,6 +77,11 @@ const templateConfirmOverlay = document.querySelector(".template-confirm-overlay
 const templateConfirmMessage = document.querySelector(".template-confirm-message");
 const templateConfirmYesButton = document.querySelector(".template-confirm-yes");
 const templateConfirmNoButton = document.querySelector(".template-confirm-no");
+const templateModeConfirmOverlay = document.querySelector(".template-mode-confirm-overlay");
+const templateModeConfirmMessage = document.querySelector(".template-mode-confirm-message");
+const templateModeConfirmSaveButton = document.querySelector(".template-mode-confirm-save");
+const templateModeConfirmReplaceButton = document.querySelector(".template-mode-confirm-replace");
+const templateModeConfirmCancelButton = document.querySelector(".template-mode-confirm-cancel");
 const outputConflictOverlay = document.querySelector(".output-conflict-overlay");
 const outputConflictMessage = document.querySelector(".output-conflict-message");
 const outputConflictPath = document.querySelector(".output-conflict-path");
@@ -258,8 +263,14 @@ const translations = {
     "template.mode.toStandard": "Switch to Standard Mode",
     "template.crew.username": "Uploader name:",
     "template.crew.filehost": "File host:",
-    "template.status.modeCrew": "Crew mode enabled. Reset to load the crew preset.",
-    "template.status.modeStandard": "Standard mode enabled. Reset to load the standard preset.",
+    "template.status.modeCrew": "Crew mode enabled.",
+    "template.status.modeStandard": "Standard mode enabled.",
+    "template.modeConfirm.title": "Switch Template Mode",
+    "template.modeConfirm.toCrew": "Switch to crew mode? This will replace your current template with the crew preset.",
+    "template.modeConfirm.toStandard": "Switch to standard mode? This will replace your current template with the standard preset.",
+    "template.modeConfirm.save": "Save & Switch",
+    "template.modeConfirm.replace": "Replace",
+    "template.modeConfirm.message": "Switching modes will replace your current template with the preset. What would you like to do?",
     "template.block.title": "Title Block",
     "template.block.version": "Version Block",
     "template.block.depot_list": "Depot List Block",
@@ -440,8 +451,14 @@ const translations = {
     "template.mode.toStandard": "Cambiar a modo estándar",
     "template.crew.username": "Nombre del autor:",
     "template.crew.filehost": "Servidor de archivos:",
-    "template.status.modeCrew": "Modo Crew activado. Restablece para cargar la plantilla Crew.",
-    "template.status.modeStandard": "Modo estándar activado. Restablece para cargar la plantilla estándar.",
+    "template.status.modeCrew": "Modo Crew activado.",
+    "template.status.modeStandard": "Modo estándar activado.",
+    "template.modeConfirm.title": "Cambiar modo de plantilla",
+    "template.modeConfirm.toCrew": "¿Cambiar al modo Crew? Esto reemplazará tu plantilla actual con la plantilla Crew.",
+    "template.modeConfirm.toStandard": "¿Cambiar al modo estándar? Esto reemplazará tu plantilla actual con la plantilla estándar.",
+    "template.modeConfirm.save": "Guardar y cambiar",
+    "template.modeConfirm.replace": "Reemplazar",
+    "template.modeConfirm.message": "Cambiar de modo reemplazará tu plantilla actual con la plantilla predeterminada. ¿Qué deseas hacer?",
     "template.block.title": "Bloque de título",
     "template.block.version": "Bloque de versión",
     "template.block.depot_list": "Bloque de lista de depósitos",
@@ -624,8 +641,14 @@ const translations = {
     "template.mode.toStandard": "Passer en mode standard",
     "template.crew.username": "Nom de l'uploader :",
     "template.crew.filehost": "Hébergeur de fichiers :",
-    "template.status.modeCrew": "Mode Crew activé. Réinitialisez pour charger le modèle Crew.",
-    "template.status.modeStandard": "Mode standard activé. Réinitialisez pour charger le modèle standard.",
+    "template.status.modeCrew": "Mode Crew activé.",
+    "template.status.modeStandard": "Mode standard activé.",
+    "template.modeConfirm.title": "Changer de mode de modèle",
+    "template.modeConfirm.toCrew": "Passer en mode Crew ? Cela remplacera votre modèle actuel par le modèle Crew.",
+    "template.modeConfirm.toStandard": "Passer en mode standard ? Cela remplacera votre modèle actuel par le modèle standard.",
+    "template.modeConfirm.save": "Enregistrer et changer",
+    "template.modeConfirm.replace": "Remplacer",
+    "template.modeConfirm.message": "Changer de mode remplacera votre modèle actuel par le modèle par défaut. Que souhaitez-vous faire ?",
     "template.block.title": "Bloc de titre",
     "template.block.version": "Bloc de version",
     "template.block.depot_list": "Bloc de liste des dépôts",
@@ -808,8 +831,14 @@ const translations = {
     "template.mode.toStandard": "Zu Standardmodus wechseln",
     "template.crew.username": "Uploader-Name:",
     "template.crew.filehost": "Dateihoster:",
-    "template.status.modeCrew": "Crew-Modus aktiviert. Zurücksetzen, um die Crew-Vorlage zu laden.",
-    "template.status.modeStandard": "Standardmodus aktiviert. Zurücksetzen, um die Standardvorlage zu laden.",
+    "template.status.modeCrew": "Crew-Modus aktiviert.",
+    "template.status.modeStandard": "Standardmodus aktiviert.",
+    "template.modeConfirm.title": "Vorlagenmodus wechseln",
+    "template.modeConfirm.toCrew": "In den Crew-Modus wechseln? Dies ersetzt deine aktuelle Vorlage durch die Crew-Vorlage.",
+    "template.modeConfirm.toStandard": "In den Standardmodus wechseln? Dies ersetzt deine aktuelle Vorlage durch die Standardvorlage.",
+    "template.modeConfirm.save": "Speichern & wechseln",
+    "template.modeConfirm.replace": "Ersetzen",
+    "template.modeConfirm.message": "Beim Moduswechsel wird deine aktuelle Vorlage durch die Standardvorlage ersetzt. Was möchtest du tun?",
     "template.block.title": "Titelblock",
     "template.block.version": "Versionsblock",
     "template.block.depot_list": "Depotlistenblock",
@@ -990,8 +1019,14 @@ const translations = {
     "template.mode.toStandard": "Переключить в стандартный режим",
     "template.crew.username": "Имя загрузившего:",
     "template.crew.filehost": "Файловый хостинг:",
-    "template.status.modeCrew": "Режим Crew включён. Сбросьте, чтобы загрузить шаблон Crew.",
-    "template.status.modeStandard": "Стандартный режим включён. Сбросьте, чтобы загрузить стандартный шаблон.",
+    "template.status.modeCrew": "Режим Crew включён.",
+    "template.status.modeStandard": "Стандартный режим включён.",
+    "template.modeConfirm.title": "Сменить режим шаблона",
+    "template.modeConfirm.toCrew": "Переключиться в режим Crew? Это заменит ваш текущий шаблон шаблоном Crew.",
+    "template.modeConfirm.toStandard": "Переключиться в стандартный режим? Это заменит ваш текущий шаблон стандартным шаблоном.",
+    "template.modeConfirm.save": "Сохранить и переключить",
+    "template.modeConfirm.replace": "Заменить",
+    "template.modeConfirm.message": "Смена режима заменит ваш текущий шаблон шаблоном по умолчанию. Что вы хотите сделать?",
     "template.block.title": "Блок заголовка",
     "template.block.version": "Блок версии",
     "template.block.depot_list": "Блок списка депо",
@@ -1351,21 +1386,74 @@ const syncTemplateModeUI = () => {
   }
 };
 
-// Flips between standard and crew mode. The mode change alone does not rewrite
-// the current blocks; it selects which preset Reset-to-Default produces and
-// toggles the crew inputs. The status line nudges the user to reset to load the
-// matching preset.
-const toggleTemplateMode = () => {
-  settingsState.templateMode =
-    settingsState.templateMode === "crew" ? "standard" : "crew";
+// Three-way confirm for switching template mode. Resolves to "save", "replace",
+// or "cancel". Switching replaces the current blocks with the target preset, so
+// we offer to save the existing template to JSON first.
+let templateModeConfirmResolve = null;
+
+const openTemplateModeConfirm = (targetMode) => {
+  const messageKey =
+    targetMode === "crew"
+      ? "template.modeConfirm.toCrew"
+      : "template.modeConfirm.toStandard";
+
+  if (!templateModeConfirmOverlay) {
+    // No modal available (e.g. tests): fall back to a confirm. OK = replace.
+    return Promise.resolve(window.confirm(t(messageKey)) ? "replace" : "cancel");
+  }
+  if (templateModeConfirmMessage) {
+    templateModeConfirmMessage.textContent = t(messageKey);
+  }
+  if (templateModeConfirmResolve) {
+    templateModeConfirmResolve("cancel");
+    templateModeConfirmResolve = null;
+  }
+  templateModeConfirmOverlay.classList.add("active");
+  return new Promise((resolve) => {
+    templateModeConfirmResolve = resolve;
+  });
+};
+
+const closeTemplateModeConfirm = (choice) => {
+  templateModeConfirmOverlay?.classList.remove("active");
+  if (templateModeConfirmResolve) {
+    templateModeConfirmResolve(choice);
+    templateModeConfirmResolve = null;
+  }
+};
+
+// Applies the mode switch: sets the mode, replaces the current blocks with the
+// target preset, and persists. Assumes the user already confirmed (and that any
+// "save" was handled by the caller).
+const applyTemplateModeSwitch = async (targetMode) => {
+  settingsState.templateMode = targetMode;
   saveSettings();
+  templateState.blocks = createDefaultTemplate();
+  await persistTemplateDefault();
   syncTemplateModeUI();
   setTemplateStatus(
-    settingsState.templateMode === "crew"
+    targetMode === "crew"
       ? t("template.status.modeCrew")
       : t("template.status.modeStandard")
   );
+  renderTemplateBuilder();
   renderTemplatePreview();
+};
+
+// Prompts before flipping modes, since switching replaces the current template
+// with the target preset. Save & Switch exports the current template first;
+// Replace switches without saving; Cancel leaves everything untouched.
+const toggleTemplateMode = async () => {
+  const targetMode =
+    settingsState.templateMode === "crew" ? "standard" : "crew";
+  const choice = await openTemplateModeConfirm(targetMode);
+  if (choice === "cancel") {
+    return;
+  }
+  if (choice === "save") {
+    await saveTemplateToFile();
+  }
+  await applyTemplateModeSwitch(targetMode);
 };
 
 const openTemplateEditor = async () => {
@@ -3750,7 +3838,33 @@ if (templateResetButton) {
 
 if (templateModeButton) {
   templateModeButton.addEventListener("click", () => {
-    toggleTemplateMode();
+    void toggleTemplateMode();
+  });
+}
+
+if (templateModeConfirmSaveButton) {
+  templateModeConfirmSaveButton.addEventListener("click", () => {
+    closeTemplateModeConfirm("save");
+  });
+}
+
+if (templateModeConfirmReplaceButton) {
+  templateModeConfirmReplaceButton.addEventListener("click", () => {
+    closeTemplateModeConfirm("replace");
+  });
+}
+
+if (templateModeConfirmCancelButton) {
+  templateModeConfirmCancelButton.addEventListener("click", () => {
+    closeTemplateModeConfirm("cancel");
+  });
+}
+
+if (templateModeConfirmOverlay) {
+  templateModeConfirmOverlay.addEventListener("click", (event) => {
+    if (event.target === templateModeConfirmOverlay) {
+      closeTemplateModeConfirm("cancel");
+    }
   });
 }
 
