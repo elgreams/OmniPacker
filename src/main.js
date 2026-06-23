@@ -2584,6 +2584,8 @@ const mapStatusToJobState = (payload) => {
       return "compressing";
     case "completed":
       return "done";
+    case "cancelled":
+      return "failed";
     case "finalization_failed":
       return "failed";
     case "error":
@@ -2780,6 +2782,10 @@ if (tauriEvent?.listen) {
       } else if (previousStatus === "compressing") {
         job.compressionProgress = null;
       }
+      // A user cancel halts the entire queue rather than advancing to the next
+      // job. The backend emits "cancelled" for both download- and
+      // compression-phase cancels; everything else advances as before.
+      const wasCancelled = event.payload?.status === "cancelled";
       if (wasRunning && (nextStatus === "done" || nextStatus === "failed")) {
         jobState.runningJobId = null;
         closeQrModal();
@@ -2787,7 +2793,11 @@ if (tauriEvent?.listen) {
         closeSteamGuardEmailModal();
       }
       renderAll();
-      if (wasRunning && (nextStatus === "done" || nextStatus === "failed")) {
+      if (
+        wasRunning &&
+        !wasCancelled &&
+        (nextStatus === "done" || nextStatus === "failed")
+      ) {
         const nextJob = getNextQueuedJob();
         if (nextJob) {
           void startJob();

@@ -25,7 +25,10 @@ use crate::steamdb_api::fetch_build_date;
 use crate::template_metadata::{TemplateMetadata, TemplateMetadataState};
 use crate::template_renderer::write_template_file;
 use crate::template_store::load_template_data_internal;
-use crate::zip_runner::{calculate_7z_compression_args, filter_custom_args, run_7zip_blocking, SevenZipRunnerState};
+use crate::zip_runner::{
+    calculate_7z_compression_args, filter_custom_args, run_7zip_blocking, SevenZipOutcome,
+    SevenZipRunnerState,
+};
 
 /// Metadata for a download job, received from the frontend
 #[derive(Clone, Debug, Deserialize)]
@@ -538,20 +541,28 @@ fn redact_7z_password_args(args: &[String]) -> Vec<String> {
 /// Compresses the finalized output folder using 7-Zip.
 /// On success, deletes the uncompressed folder and returns the archive path.
 /// On failure, leaves the folder intact and returns an error.
+/// Failure modes for `compress_output`. `Cancelled` means the user aborted the
+/// job mid-compression and must NOT be treated as a recoverable error (which
+/// would leave the uncompressed output and report the job as completed).
+enum CompressionError {
+    Cancelled,
+    Failed(String),
+}
+
 fn compress_output(
     app_handle: &AppHandle,
     output_path: &std::path::Path,
     job_id: &str,
     compression_password: Option<&str>,
     custom_compression_args: Option<&str>,
-) -> Result<std::path::PathBuf, String> {
+) -> Result<std::path::PathBuf, CompressionError> {
     let archive_path = resolve_archive_path(output_path);
 
     if archive_path.exists() {
-        return Err(format!(
+        return Err(CompressionError::Failed(format!(
             "Archive already exists: {}",
             archive_path.display()
-        ));
+        )));
     }
 
     let args =
@@ -567,21 +578,32 @@ fn compress_output(
 
     let zip_state = app_handle.state::<SevenZipRunnerState>();
     let exit_code = match run_7zip_blocking(app_handle, &zip_state, args) {
-        Ok(code) => code,
+        Ok(SevenZipOutcome::Exited(code)) => code,
+        Ok(SevenZipOutcome::Cancelled) => {
+            // User cancelled: remove the partial archive and signal cancel so
+            // the worker stops the queue instead of falling through to success.
+            let _ = std::fs::remove_file(&archive_path);
+            return Err(CompressionError::Cancelled);
+        }
         Err(err) => {
             let _ = std::fs::remove_file(&archive_path);
-            return Err(err);
+            return Err(CompressionError::Failed(err));
         }
     };
 
     if exit_code != 0 {
         // Clean up partial archive if it exists
         let _ = std::fs::remove_file(&archive_path);
-        return Err(format!("7-Zip exited with code {}", exit_code));
+        return Err(CompressionError::Failed(format!(
+            "7-Zip exited with code {}",
+            exit_code
+        )));
     }
 
     if !archive_path.exists() {
-        return Err("Archive not found after compression".to_string());
+        return Err(CompressionError::Failed(
+            "Archive not found after compression".to_string(),
+        ));
     }
 
     // Default behavior: Remove uncompressed folder after successful compression
@@ -1047,6 +1069,7 @@ fn run_depotdownloader_worker(
 
                         // === COMPRESSION PHASE ===
                         let mut final_output_path = output_path.clone();
+                        let mut compression_cancelled = false;
                         if job_for_monitor.skip_compression {
                             emit_log(
                                 &app_handle_clone,
@@ -1111,7 +1134,10 @@ fn run_depotdownloader_worker(
                                     );
                                     final_output_path = archive_path;
                                 }
-                                Err(err) => {
+                                Err(CompressionError::Failed(err)) => {
+                                    // Genuine compression error: keep the
+                                    // uncompressed output and let the job finish
+                                    // as completed so the user still gets files.
                                     emit_log(
                                         &app_handle_clone,
                                         "system",
@@ -1119,53 +1145,73 @@ fn run_depotdownloader_worker(
                                         &job_id_for_monitor,
                                     );
                                 }
+                                Err(CompressionError::Cancelled) => {
+                                    // User cancelled mid-compression: do NOT fall
+                                    // through to template generation / completed.
+                                    compression_cancelled = true;
+                                    emit_log(
+                                        &app_handle_clone,
+                                        "system",
+                                        "Compression cancelled by user.",
+                                        &job_id_for_monitor,
+                                    );
+                                }
                             }
                         }
                         // === END COMPRESSION ===
 
-                        // === TEMPLATE GENERATION ===
-                        // Generate template text file with job metadata
-                        if let Some(template_metadata) = app_handle_clone
-                            .state::<TemplateMetadataState>()
-                            .get()
-                        {
-                            emit_log(
-                                &app_handle_clone,
-                                "system",
-                                "Generating template file...",
-                                &job_id_for_monitor,
-                            );
+                        if compression_cancelled {
+                            // The user cancelled during compression. Skip template
+                            // generation, mark the job cancelled (not completed, so
+                            // the frontend halts the queue instead of advancing),
+                            // and clean up staging like the download-cancel path.
+                            emit_status(&app_handle_clone, "cancelled", None, &job_id_for_monitor);
+                            let _ = cleanup_staging_dir(&app_handle_clone, &job_id_for_monitor);
+                        } else {
+                            // === TEMPLATE GENERATION ===
+                            // Generate template text file with job metadata
+                            if let Some(template_metadata) = app_handle_clone
+                                .state::<TemplateMetadataState>()
+                                .get()
+                            {
+                                emit_log(
+                                    &app_handle_clone,
+                                    "system",
+                                    "Generating template file...",
+                                    &job_id_for_monitor,
+                                );
 
-                            // Load user's template (or use default)
-                            let template_blocks = load_template_data_internal(&app_handle_clone)
-                                .map(|payload| payload.blocks);
+                                // Load user's template (or use default)
+                                let template_blocks = load_template_data_internal(&app_handle_clone)
+                                    .map(|payload| payload.blocks);
 
-                            let template_blocks_ref = template_blocks.as_ref().map(|v| v.as_slice());
+                                let template_blocks_ref = template_blocks.as_ref().map(|v| v.as_slice());
 
-                            match write_template_file(&final_output_path, &template_metadata, template_blocks_ref) {
-                                Ok(()) => {
-                                    emit_log(
-                                        &app_handle_clone,
-                                        "system",
-                                        "Template file generated successfully.",
-                                        &job_id_for_monitor,
-                                    );
-                                }
-                                Err(err) => {
-                                    emit_log(
-                                        &app_handle_clone,
-                                        "system",
-                                        &format!("Failed to generate template file: {}", err),
-                                        &job_id_for_monitor,
-                                    );
+                                match write_template_file(&final_output_path, &template_metadata, template_blocks_ref) {
+                                    Ok(()) => {
+                                        emit_log(
+                                            &app_handle_clone,
+                                            "system",
+                                            "Template file generated successfully.",
+                                            &job_id_for_monitor,
+                                        );
+                                    }
+                                    Err(err) => {
+                                        emit_log(
+                                            &app_handle_clone,
+                                            "system",
+                                            &format!("Failed to generate template file: {}", err),
+                                            &job_id_for_monitor,
+                                        );
+                                    }
                                 }
                             }
-                        }
-                        // === END TEMPLATE GENERATION ===
+                            // === END TEMPLATE GENERATION ===
 
-                        emit_status(&app_handle_clone, "completed", Some(0), &job_id_for_monitor);
-                        // Cleanup staging after successful finalization
-                        let _ = cleanup_staging_dir(&app_handle_clone, &job_id_for_monitor);
+                            emit_status(&app_handle_clone, "completed", Some(0), &job_id_for_monitor);
+                            // Cleanup staging after successful finalization
+                            let _ = cleanup_staging_dir(&app_handle_clone, &job_id_for_monitor);
+                        }
                     }
                     Err(err) => {
                         emit_log(
@@ -1238,7 +1284,10 @@ pub fn cancel_depotdownloader(
     guard.depot_dlcappids.clear();
     guard.last_depot_mentioned = None;
 
-    emit_status(&app_handle, "exited", status.code(), &job_id);
+    // Emit "cancelled" (not "exited") so the frontend halts the whole queue
+    // rather than auto-advancing to the next job as it does on a normal exit.
+    let _ = status;
+    emit_status(&app_handle, "cancelled", None, &job_id);
 
     // Clean up staging directory on cancellation
     emit_log(

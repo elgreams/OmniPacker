@@ -3,7 +3,10 @@ use std::{
     io::{BufReader, Read},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
     time::Duration,
 };
@@ -19,12 +22,26 @@ use crate::debug_log::{debug_log, DebugLog};
 #[derive(Clone)]
 pub struct SevenZipRunnerState {
     child: Arc<Mutex<Option<Child>>>,
+    /// Set when the running 7-Zip child was killed by the user (cancel), as
+    /// opposed to exiting on its own. Lets `run_7zip_blocking` distinguish a
+    /// user cancel (which nulls the child out from under it) from a genuine
+    /// non-zero exit, so a cancelled compression is not reported as success.
+    cancelled: Arc<AtomicBool>,
+}
+
+/// Result of a blocking 7-Zip run. `Cancelled` means the user killed the
+/// process via `cancel_7zip`; it is NOT a normal exit code and callers must
+/// not treat it as success or as a recoverable compression error.
+pub enum SevenZipOutcome {
+    Exited(i32),
+    Cancelled,
 }
 
 impl SevenZipRunnerState {
     pub fn new() -> Self {
         Self {
             child: Arc::new(Mutex::new(None)),
+            cancelled: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -193,6 +210,10 @@ pub fn cancel_7zip(
         return Err("7-Zip is not running".to_string());
     };
 
+    // Mark this as a user cancel before killing, so a concurrent
+    // `run_7zip_blocking` reports `Cancelled` rather than a bogus exit code.
+    state.cancelled.store(true, Ordering::SeqCst);
+
     child
         .kill()
         .map_err(|err| format!("Failed to terminate 7-Zip: {err}"))?;
@@ -214,7 +235,7 @@ pub fn run_7zip_blocking(
     app_handle: &AppHandle,
     state: &SevenZipRunnerState,
     args: Vec<String>,
-) -> Result<i32, String> {
+) -> Result<SevenZipOutcome, String> {
     let mut guard = state
         .child
         .lock()
@@ -223,6 +244,9 @@ pub fn run_7zip_blocking(
     if guard.is_some() {
         return Err("7-Zip is already running".to_string());
     }
+
+    // Clear any stale cancel flag from a previous run before starting.
+    state.cancelled.store(false, Ordering::SeqCst);
 
     let path = resolve_7zip_path(app_handle)?;
 
@@ -262,7 +286,10 @@ pub fn run_7zip_blocking(
                 .map_err(|_| "Failed to lock 7-Zip state".to_string())?;
 
             let Some(child) = guard.as_mut() else {
-                return Ok(-1);
+                // The child was nulled out from under us. If `cancel_7zip` set
+                // the cancel flag, this is a user cancel; otherwise treat it as
+                // a cancel as well (the child is gone, no real exit code exists).
+                return Ok(SevenZipOutcome::Cancelled);
             };
 
             match child.try_wait() {
@@ -279,7 +306,12 @@ pub fn run_7zip_blocking(
         };
 
         if let Some(code) = status_code {
-            return Ok(code);
+            // A real exit could still race a cancel (process exits just as the
+            // user kills it); prefer Cancelled so we never report success.
+            if state.cancelled.load(Ordering::SeqCst) {
+                return Ok(SevenZipOutcome::Cancelled);
+            }
+            return Ok(SevenZipOutcome::Exited(code));
         }
 
         thread::sleep(Duration::from_millis(100));
