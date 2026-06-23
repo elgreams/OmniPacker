@@ -10,6 +10,20 @@
 
   <body>
     <main class="app">
+      <div class="update-banner" id="update-banner" role="status" hidden>
+        <span class="update-banner-text" id="update-banner-text"></span>
+        <div class="update-banner-actions">
+          <button type="button" class="update-banner-download" id="update-banner-download" data-i18n="update.download">
+            Download
+          </button>
+          <button type="button" class="update-banner-skip" id="update-banner-skip" data-i18n="update.skip">
+            Skip this version
+          </button>
+          <button type="button" class="update-banner-dismiss" id="update-banner-dismiss" data-i18n="update.dismiss" aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      </div>
       <header class="tab-bar" role="tablist">
         <button class="tab active" type="button" role="tab" data-tab="queue" data-i18n="tab.queue">
           Queue
@@ -179,6 +193,13 @@
             <button type="button" class="settings-delete-login-button" data-i18n="settings.deleteLogin">
               Delete Saved Login Data
             </button>
+          </div>
+
+          <div class="settings-group">
+            <button type="button" class="settings-check-update-button" id="settings-check-update" data-i18n="update.checkButton">
+              Check for Updates
+            </button>
+            <span class="settings-hint" id="settings-update-status" aria-live="polite"></span>
           </div>
         </div>
         <div class="modal-actions">

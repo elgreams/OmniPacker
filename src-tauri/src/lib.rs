@@ -16,6 +16,7 @@ mod steamdb_api;
 mod template_metadata;
 mod template_renderer;
 mod template_store;
+mod update_check;
 mod zip_runner;
 
 use debug_console::{debug_console_enabled, debug_console_log, DebugConsoleState};
@@ -28,6 +29,7 @@ use output_conflict::{resolve_output_conflict, OutputConflictState};
 use output_dir::{get_output_folder, open_output_folder};
 use template_metadata::{get_template_metadata, TemplateMetadataState};
 use template_store::{load_template_data, save_template_data};
+use update_check::{check_for_update, open_external_url};
 use zip_runner::{cancel_7zip, run_7zip, SevenZipRunnerState};
 use std::sync::OnceLock;
 use tauri::Manager;
@@ -136,7 +138,9 @@ pub fn run() {
             get_template_metadata,
             save_template_data,
             load_template_data,
-            resolve_output_conflict
+            resolve_output_conflict,
+            check_for_update,
+            open_external_url
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

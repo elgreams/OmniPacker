@@ -33,6 +33,13 @@ const defaultQrToggle = document.getElementById("default-qr-toggle");
 const languageSelect = document.getElementById("language-select");
 const saveLoginButton = document.querySelector(".save-login-button");
 const deleteLoginButton = document.querySelector(".settings-delete-login-button");
+const updateBanner = document.getElementById("update-banner");
+const updateBannerText = document.getElementById("update-banner-text");
+const updateBannerDownload = document.getElementById("update-banner-download");
+const updateBannerSkip = document.getElementById("update-banner-skip");
+const updateBannerDismiss = document.getElementById("update-banner-dismiss");
+const checkUpdateButton = document.getElementById("settings-check-update");
+const updateStatusLabel = document.getElementById("settings-update-status");
 const steamGuardModalOverlay = document.querySelector(".steam-guard-modal-overlay");
 const steamGuardEmailOverlay = document.querySelector(".steam-guard-email-overlay");
 const steamGuardEmailMessage = document.querySelector(".steam-guard-email-message");
@@ -92,6 +99,9 @@ const settingsState = {
   language: "en",
   defaultTemplate: null,
   lastTemplateSaveDir: null,
+  // Version the user chose to skip via the update banner ("Skip this version").
+  // The banner won't show again until a release newer than this appears.
+  skippedUpdateVersion: null,
 };
 
 const outputConflictState = {
@@ -198,6 +208,14 @@ const translations = {
       "Extra flags passed to 7-Zip. OmniPacker auto-tunes -mmt and -md for your system; overriding them may cause issues. Flags -t, -p, and -bsp are not allowed.",
     "settings.defaultQrLogin": "Default to QR Login",
     "settings.deleteLogin": "Delete Saved Login Data",
+    "update.available": "OmniPacker v{{version}} is available.",
+    "update.download": "Download",
+    "update.skip": "Skip this version",
+    "update.dismiss": "✕",
+    "update.checkButton": "Check for Updates",
+    "update.checking": "Checking for updates…",
+    "update.upToDate": "You're up to date.",
+    "update.checkFailed": "Update check failed.",
     "template.button": "Template Editor",
     "template.title": "Template Editor",
     "template.builder": "Block Builder",
@@ -359,6 +377,14 @@ const translations = {
       "Flags adicionales para 7-Zip. OmniPacker ajusta -mmt y -md automáticamente; modificarlos puede causar problemas. Los flags -t, -p y -bsp no están permitidos.",
     "settings.defaultQrLogin": "Usar QR de forma predeterminada",
     "settings.deleteLogin": "Eliminar datos de inicio de sesión guardados",
+    "update.available": "OmniPacker v{{version}} ya está disponible.",
+    "update.download": "Descargar",
+    "update.skip": "Omitir esta versión",
+    "update.dismiss": "✕",
+    "update.checkButton": "Buscar actualizaciones",
+    "update.checking": "Buscando actualizaciones…",
+    "update.upToDate": "Estás actualizado.",
+    "update.checkFailed": "Error al buscar actualizaciones.",
     "template.button": "Editor de plantillas",
     "template.title": "Editor de plantillas",
     "template.builder": "Constructor de bloques",
@@ -522,6 +548,14 @@ const translations = {
       "Flags supplémentaires pour 7-Zip. OmniPacker ajuste -mmt et -md automatiquement; les modifier peut causer des problèmes. Les flags -t, -p et -bsp ne sont pas autorisés.",
     "settings.defaultQrLogin": "Utiliser QR par défaut",
     "settings.deleteLogin": "Supprimer les identifiants enregistrés",
+    "update.available": "OmniPacker v{{version}} est disponible.",
+    "update.download": "Télécharger",
+    "update.skip": "Ignorer cette version",
+    "update.dismiss": "✕",
+    "update.checkButton": "Rechercher des mises à jour",
+    "update.checking": "Recherche de mises à jour…",
+    "update.upToDate": "Vous êtes à jour.",
+    "update.checkFailed": "Échec de la vérification des mises à jour.",
     "template.button": "Éditeur de modèles",
     "template.title": "Éditeur de modèles",
     "template.builder": "Constructeur de blocs",
@@ -685,6 +719,14 @@ const translations = {
       "Zusätzliche Flags für 7-Zip. OmniPacker passt -mmt und -md automatisch an; Änderungen können Probleme verursachen. Die Flags -t, -p und -bsp sind nicht erlaubt.",
     "settings.defaultQrLogin": "Standardmäßig QR-Login verwenden",
     "settings.deleteLogin": "Gespeicherte Login-Daten löschen",
+    "update.available": "OmniPacker v{{version}} ist verfügbar.",
+    "update.download": "Herunterladen",
+    "update.skip": "Diese Version überspringen",
+    "update.dismiss": "✕",
+    "update.checkButton": "Nach Updates suchen",
+    "update.checking": "Suche nach Updates…",
+    "update.upToDate": "Sie sind auf dem neuesten Stand.",
+    "update.checkFailed": "Update-Prüfung fehlgeschlagen.",
     "template.button": "Vorlageneditor",
     "template.title": "Vorlageneditor",
     "template.builder": "Block-Editor",
@@ -846,6 +888,14 @@ const translations = {
       "Дополнительные флаги для 7-Zip. OmniPacker автоматически настраивает -mmt и -md; их изменение может вызвать проблемы. Флаги -t, -p и -bsp запрещены.",
     "settings.defaultQrLogin": "QR-вход по умолчанию",
     "settings.deleteLogin": "Удалить сохраненные данные входа",
+    "update.available": "Доступна версия OmniPacker v{{version}}.",
+    "update.download": "Скачать",
+    "update.skip": "Пропустить эту версию",
+    "update.dismiss": "✕",
+    "update.checkButton": "Проверить обновления",
+    "update.checking": "Проверка обновлений…",
+    "update.upToDate": "У вас последняя версия.",
+    "update.checkFailed": "Не удалось проверить обновления.",
     "template.button": "Редактор шаблонов",
     "template.title": "Редактор шаблонов",
     "template.builder": "Конструктор блоков",
@@ -1777,6 +1827,9 @@ const loadSettings = () => {
       }
       if (typeof parsed.lastTemplateSaveDir === "string") {
         settingsState.lastTemplateSaveDir = parsed.lastTemplateSaveDir;
+      }
+      if (typeof parsed.skippedUpdateVersion === "string") {
+        settingsState.skippedUpdateVersion = parsed.skippedUpdateVersion;
       }
     }
     if (
@@ -3492,6 +3545,94 @@ if (deleteLoginButton) {
   });
 }
 
+// --- Update check (check-and-warn, not a self-updater) ---
+
+// Latest UpdateInfo from the backend, kept so the banner buttons can act on it.
+let latestUpdateInfo = null;
+
+const showUpdateBanner = (info) => {
+  if (!updateBanner || !updateBannerText) {
+    return;
+  }
+  latestUpdateInfo = info;
+  updateBannerText.textContent = t("update.available", { version: info.latest });
+  updateBanner.hidden = false;
+};
+
+const hideUpdateBanner = () => {
+  if (updateBanner) {
+    updateBanner.hidden = true;
+  }
+};
+
+// Runs the backend check. `silent` (startup) swallows everything and only shows
+// the banner when an update is available and not skipped. Non-silent (manual
+// settings button) also reports "up to date" / failure in the settings hint.
+const runUpdateCheck = async (silent) => {
+  if (!tauriInvoke) {
+    return;
+  }
+  if (!silent && updateStatusLabel) {
+    updateStatusLabel.textContent = t("update.checking");
+  }
+  try {
+    const info = await tauriInvoke("check_for_update");
+    if (!info?.update_available) {
+      if (!silent && updateStatusLabel) {
+        updateStatusLabel.textContent = t("update.upToDate");
+      }
+      return;
+    }
+    // On startup, respect a previously skipped version.
+    if (silent && settingsState.skippedUpdateVersion === info.latest) {
+      return;
+    }
+    if (!silent && updateStatusLabel) {
+      updateStatusLabel.textContent = "";
+    }
+    showUpdateBanner(info);
+  } catch (error) {
+    // A failed check must never block or error-popup. Surface only on manual use.
+    console.debug("[OmniPacker] Update check failed:", error);
+    if (!silent && updateStatusLabel) {
+      updateStatusLabel.textContent = t("update.checkFailed");
+    }
+  }
+};
+
+if (updateBannerDownload) {
+  updateBannerDownload.addEventListener("click", () => {
+    if (latestUpdateInfo?.url && tauriInvoke) {
+      void tauriInvoke("open_external_url", { url: latestUpdateInfo.url }).catch(
+        (error) => console.debug("[OmniPacker] Failed to open release page:", error),
+      );
+    }
+  });
+}
+
+if (updateBannerSkip) {
+  updateBannerSkip.addEventListener("click", () => {
+    if (latestUpdateInfo?.latest) {
+      settingsState.skippedUpdateVersion = latestUpdateInfo.latest;
+      saveSettings();
+    }
+    hideUpdateBanner();
+  });
+}
+
+if (updateBannerDismiss) {
+  updateBannerDismiss.addEventListener("click", () => {
+    // Session-only dismiss: no persistence, reappears next launch.
+    hideUpdateBanner();
+  });
+}
+
+if (checkUpdateButton) {
+  checkUpdateButton.addEventListener("click", () => {
+    void runUpdateCheck(false);
+  });
+}
+
 // Load settings from localStorage on startup
 loadSettings();
 void syncTemplateStorage();
@@ -3533,3 +3674,6 @@ window.addEventListener("resize", applyUiScale);
 applyUiScale();
 
 renderAll();
+
+// Non-blocking update check on launch. Silently no-ops on network failure.
+void runUpdateCheck(true);

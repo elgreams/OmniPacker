@@ -604,6 +604,89 @@ html[lang="de"] .add-to-queue {
   background: #5a2a2a;
 }
 
+.settings-check-update-button {
+  padding: 8px 12px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #e6e6e6;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-check-update-button:hover {
+  background: #3a3a3a;
+}
+
+/* Update banner */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  background: #2c2710;
+  border-bottom: 1px solid #aa9100;
+  color: #f0e6c0;
+  font-size: 13px;
+}
+
+.update-banner[hidden] {
+  display: none;
+}
+
+.update-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.update-banner-download {
+  padding: 5px 12px;
+  background: #aa9100;
+  border: 1px solid #c7ab00;
+  color: #1d1c1c;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.update-banner-download:hover {
+  background: #c7ab00;
+}
+
+.update-banner-skip {
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid #6a5e20;
+  color: #d8caa0;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.update-banner-skip:hover {
+  background: #3a3415;
+}
+
+.update-banner-dismiss {
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: #d8caa0;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.update-banner-dismiss:hover {
+  color: #fff;
+}
+
 /* Template Editor */
 .template-modal {
   width: min(980px, 96vw);
