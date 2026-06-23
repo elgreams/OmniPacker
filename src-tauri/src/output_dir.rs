@@ -179,10 +179,14 @@ pub fn get_output_folder(app_handle: AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 pub fn open_output_folder(app_handle: AppHandle) -> Result<(), String> {
-    let path = resolve_downloads_dir(&app_handle)?;
+    // Finished packages land in the "outputs" subfolder, not the downloads root.
+    let outputs_dir = resolve_downloads_dir(&app_handle)?.join("outputs");
+    // Create it if no job has produced output yet, so the open doesn't fail.
+    std::fs::create_dir_all(&outputs_dir)
+        .map_err(|err| format!("Failed to create outputs directory: {err}"))?;
     // Append a trailing separator so file managers open the folder's contents
     // instead of revealing/selecting it inside its parent directory.
-    let path = with_trailing_separator(&path);
+    let path = with_trailing_separator(&outputs_dir);
     #[cfg(target_os = "linux")]
     if is_appimage_env() {
         return open_path_appimage(&path)
