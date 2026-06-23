@@ -180,6 +180,9 @@ pub fn get_output_folder(app_handle: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub fn open_output_folder(app_handle: AppHandle) -> Result<(), String> {
     let path = resolve_downloads_dir(&app_handle)?;
+    // Append a trailing separator so file managers open the folder's contents
+    // instead of revealing/selecting it inside its parent directory.
+    let path = with_trailing_separator(&path);
     #[cfg(target_os = "linux")]
     if is_appimage_env() {
         return open_path_appimage(&path)
@@ -189,4 +192,10 @@ pub fn open_output_folder(app_handle: AppHandle) -> Result<(), String> {
         .opener()
         .open_path(path.to_string_lossy().to_string(), None::<String>)
         .map_err(|err| format!("Failed to open output folder: {err}"))
+}
+
+fn with_trailing_separator(path: &Path) -> PathBuf {
+    let mut s = path.as_os_str().to_os_string();
+    s.push(std::path::MAIN_SEPARATOR.to_string());
+    PathBuf::from(s)
 }
