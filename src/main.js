@@ -40,6 +40,7 @@ const updateBannerSkip = document.getElementById("update-banner-skip");
 const updateBannerDismiss = document.getElementById("update-banner-dismiss");
 const checkUpdateButton = document.getElementById("settings-check-update");
 const updateStatusLabel = document.getElementById("settings-update-status");
+const settingsVersionLabel = document.getElementById("settings-version");
 const steamGuardModalOverlay = document.querySelector(".steam-guard-modal-overlay");
 const steamGuardEmailOverlay = document.querySelector(".steam-guard-email-overlay");
 const steamGuardEmailMessage = document.querySelector(".steam-guard-email-message");
@@ -230,6 +231,7 @@ const translations = {
     "template.block.depot_list": "Depot List Block",
     "template.block.free_text": "Free Text Block",
     "template.block.uploaded_version": "Uploaded Version Block",
+    "template.block.advertise_omnipacker": "Advertise OmniPacker",
     "template.field.template": "Template",
     "template.field.text": "Text",
     "template.field.depotTitle": "Spoiler title",
@@ -399,6 +401,7 @@ const translations = {
     "template.block.depot_list": "Bloque de lista de depósitos",
     "template.block.free_text": "Bloque de texto libre",
     "template.block.uploaded_version": "Bloque de versión subida",
+    "template.block.advertise_omnipacker": "Anunciar OmniPacker",
     "template.field.template": "Plantilla",
     "template.field.text": "Texto",
     "template.field.depotTitle": "Título del spoiler",
@@ -570,6 +573,7 @@ const translations = {
     "template.block.depot_list": "Bloc de liste des dépôts",
     "template.block.free_text": "Bloc de texte libre",
     "template.block.uploaded_version": "Bloc de version téléversée",
+    "template.block.advertise_omnipacker": "Promouvoir OmniPacker",
     "template.field.template": "Modèle",
     "template.field.text": "Texte",
     "template.field.depotTitle": "Titre du spoiler",
@@ -741,6 +745,7 @@ const translations = {
     "template.block.depot_list": "Depotlistenblock",
     "template.block.free_text": "Freitextblock",
     "template.block.uploaded_version": "Block für hochgeladene Version",
+    "template.block.advertise_omnipacker": "OmniPacker bewerben",
     "template.field.template": "Vorlage",
     "template.field.text": "Text",
     "template.field.depotTitle": "Spoiler-Titel",
@@ -910,6 +915,7 @@ const translations = {
     "template.block.depot_list": "Блок списка депо",
     "template.block.free_text": "Блок свободного текста",
     "template.block.uploaded_version": "Блок загруженной версии",
+    "template.block.advertise_omnipacker": "Реклама OmniPacker",
     "template.field.template": "Шаблон",
     "template.field.text": "Текст",
     "template.field.depotTitle": "Заголовок спойлера",
@@ -1031,6 +1037,11 @@ const TEMPLATE_SINGLE_FIELDS = [
 ];
 const TEMPLATE_DEPOT_FIELDS = ["depot_id", "depot_name", "manifest_id"];
 
+// Canonical OmniPacker credit line. Single source of truth on the JS side;
+// the backend renderer (template_renderer.rs) has a matching constant.
+const OMNIPACKER_CREDIT =
+  "Made using [url=https://github.com/elgreams/OmniPacker]OmniPacker[/url]";
+
 // Default test metadata for template preview when no job has been run
 const TEMPLATE_DEFAULT_METADATA = {
   game_name: "Balatro",
@@ -1058,6 +1069,7 @@ const TEMPLATE_BLOCK_TYPES = [
   { type: "depot_list", labelKey: "template.block.depot_list" },
   { type: "free_text", labelKey: "template.block.free_text" },
   { type: "uploaded_version", labelKey: "template.block.uploaded_version" },
+  { type: "advertise_omnipacker", labelKey: "template.block.advertise_omnipacker" },
 ];
 
 const TEMPLATE_DEFAULTS = {
@@ -1080,6 +1092,9 @@ const TEMPLATE_DEFAULTS = {
   uploaded_version: {
     template:
       "[color=white][b]Uploaded version:[/b] [i]{{build_datetime_utc}} [Build {{build_id}}][/i][/color]",
+  },
+  advertise_omnipacker: {
+    // Fixed-content block; renders OMNIPACKER_CREDIT with no editable fields.
   },
 };
 
@@ -1109,12 +1124,6 @@ const createDefaultTemplate = () => [
   createTemplateBlock("version"),
   createTemplateBlock("depot_list"),
   createTemplateBlock("uploaded_version"),
-  {
-    ...createTemplateBlock("free_text"),
-    config: {
-      text: "Made using [url=https://github.com/elgreams/OmniPacker]OmniPacker[/url]",
-    },
-  },
 ];
 
 const loadDefaultTemplateFromSettings = () => {
@@ -1456,6 +1465,11 @@ const renderTemplateOutput = (blocks, metadata) => {
       continue;
     }
 
+    if (block.type === "advertise_omnipacker") {
+      outputParts.push(OMNIPACKER_CREDIT);
+      continue;
+    }
+
     if (block.type === "depot_list") {
       if (depots.length === 0) {
         return { error: t("template.error.noDepots") };
@@ -1585,6 +1599,8 @@ const parseTemplatePayload = (payload) => {
             ? config.text
             : TEMPLATE_DEFAULTS.free_text.text,
       };
+    } else if (block.type === "advertise_omnipacker") {
+      sanitized = {};
     } else if (block.type === "depot_list") {
       sanitized = {
         title:
@@ -2252,8 +2268,23 @@ const closeQrModal = () => {
   qrModalOverlay?.classList.remove("active");
 };
 
+let appVersionLoaded = false;
+const loadAppVersion = async () => {
+  if (appVersionLoaded || !settingsVersionLabel || !tauriInvoke) {
+    return;
+  }
+  try {
+    const version = await tauriInvoke("get_app_version");
+    settingsVersionLabel.textContent = version ? `v${version}` : "";
+    appVersionLoaded = true;
+  } catch {
+    settingsVersionLabel.textContent = "";
+  }
+};
+
 const openSettingsModal = () => {
   applySettingsToUI();
+  void loadAppVersion();
   settingsModalOverlay?.classList.add("active");
 };
 

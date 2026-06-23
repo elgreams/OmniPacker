@@ -4,6 +4,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+/// Canonical OmniPacker credit line. Single source of truth on the Rust side;
+/// the frontend (main.js) has a matching `OMNIPACKER_CREDIT` constant.
+const OMNIPACKER_CREDIT: &str =
+    "Made using [url=https://github.com/elgreams/OmniPacker]OmniPacker[/url]";
+
 /// Template block types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -13,6 +18,10 @@ pub enum TemplateBlock {
     DepotList { config: DepotListConfig },
     FreeText { config: FreeTextConfig },
     UploadedVersion { config: UploadedVersionConfig },
+    AdvertiseOmnipacker {
+        #[serde(default)]
+        config: AdvertiseConfig,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +55,10 @@ pub struct UploadedVersionConfig {
     pub template: String,
 }
 
+/// Fixed-content "Advertise OmniPacker" block carries no user-editable fields.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AdvertiseConfig {}
+
 /// Template payload structure matching frontend format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplatePayload {
@@ -77,6 +90,7 @@ fn block_type_name(block: &TemplateBlock) -> &'static str {
         TemplateBlock::DepotList { .. } => "depot_list",
         TemplateBlock::FreeText { .. } => "free_text",
         TemplateBlock::UploadedVersion { .. } => "uploaded_version",
+        TemplateBlock::AdvertiseOmnipacker { .. } => "advertise_omnipacker",
     }
 }
 
@@ -112,6 +126,8 @@ pub fn render_template(
             TemplateBlock::FreeText { config } => {
                 render_template_string(&config.text, &base_values)
             }
+
+            TemplateBlock::AdvertiseOmnipacker { .. } => OMNIPACKER_CREDIT.to_string(),
 
             TemplateBlock::DepotList { config } => {
                 let max_depots = config.max_depots.unwrap_or(100);
@@ -196,11 +212,6 @@ pub fn create_default_template() -> Vec<TemplateBlock> {
         TemplateBlock::UploadedVersion {
             config: UploadedVersionConfig {
                 template: "[color=white][b]Uploaded version:[/b] [i]{{build_datetime_utc}} [Build {{build_id}}][/i][/color]".to_string(),
-            },
-        },
-        TemplateBlock::FreeText {
-            config: FreeTextConfig {
-                text: "Made using [url=https://github.com/elgreams/OmniPacker]OmniPacker[/url]".to_string(),
             },
         },
     ]
@@ -308,6 +319,46 @@ mod tests {
         assert!(result.contains("Balatro [Win64]"));
         assert!(result.contains("[spoiler=Test Depots]"));
         assert!(result.contains("Balatro Content: 4851806656204679952"));
+    }
+
+    #[test]
+    fn test_advertise_omnipacker_renders_credit_line() {
+        let metadata = TemplateMetadata {
+            game_name: "Balatro".to_string(),
+            os: "Win64".to_string(),
+            branch: "Public".to_string(),
+            build_datetime_utc: "February 24, 2025 - 22:02:36 UTC".to_string(),
+            build_id: "18674832".to_string(),
+            depots: vec![],
+        };
+
+        let blocks = vec![TemplateBlock::AdvertiseOmnipacker {
+            config: AdvertiseConfig {},
+        }];
+
+        let result = render_template(&blocks, &metadata).unwrap();
+        assert_eq!(result, OMNIPACKER_CREDIT);
+    }
+
+    #[test]
+    fn test_default_template_does_not_include_credit() {
+        // The credit line is no longer part of the built-in default; it is only
+        // available as the selectable "Advertise OmniPacker" block.
+        let metadata = TemplateMetadata {
+            game_name: "Balatro".to_string(),
+            os: "Win64".to_string(),
+            branch: "Public".to_string(),
+            build_datetime_utc: "February 24, 2025 - 22:02:36 UTC".to_string(),
+            build_id: "18674832".to_string(),
+            depots: vec![TemplateDepot {
+                depot_id: "2923300".to_string(),
+                depot_name: "Balatro Content".to_string(),
+                manifest_id: "4851806656204679952".to_string(),
+            }],
+        };
+
+        let rendered = render_template(&create_default_template(), &metadata).unwrap();
+        assert!(!rendered.contains("OmniPacker"));
     }
 
     #[test]
