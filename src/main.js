@@ -2037,12 +2037,20 @@ const resolveEventJob = (payload) => {
     if (matchingJob) {
       return matchingJob;
     }
+    // Startup race: the backend emits the first events carrying the real
+    // job_id before run_depotdownloader has returned it to the frontend, so
+    // the running job may not have its backendJobId set yet. Bind it here.
     const runningJob = getRunningJob();
     if (runningJob && !runningJob.backendJobId) {
       runningJob.backendJobId = backendJobId;
       return runningJob;
     }
+    // A jobId that matches no job while the running job is already identified
+    // is a stale/stray event. Orphan it instead of misattributing it to the
+    // current job (which would pollute its log or drive a bogus transition).
+    return null;
   }
+  // jobId-less events still attach to the running job.
   return getRunningJob();
 };
 
