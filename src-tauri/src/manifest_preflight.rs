@@ -17,7 +17,6 @@ pub struct PreflightDepotInfo {
 #[derive(Debug)]
 pub struct PreflightResult {
     /// List of depots discovered
-    #[allow(dead_code)] // Captured but not currently used; kept for debugging/future use
     pub depots: Vec<PreflightDepotInfo>,
     /// Primary depot ID (from installdir detection)
     #[allow(dead_code)] // Captured but not currently used; kept for debugging/future use
