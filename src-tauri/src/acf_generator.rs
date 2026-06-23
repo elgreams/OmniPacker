@@ -4,7 +4,8 @@
 //! installed games. These files enable drop-in compatibility with Steam's
 //! library detection.
 //!
-//! PRIVACY: The `LastOwner` field is ALWAYS set to "0" to prevent deanonymization.
+//! PRIVACY: The `LastOwner` and `LastUpdated` fields are ALWAYS set to "0" to
+//! prevent deanonymization (LastUpdated would otherwise leak the download time).
 
 use std::collections::HashMap;
 use std::fs;
@@ -109,12 +110,6 @@ fn generate_acf_content(
 ) -> String {
     let mut vdf = VdfBuilder::new();
 
-    // Get Unix timestamp from build datetime, or use current time as fallback
-    let last_updated = metadata
-        .build_datetime_utc
-        .map(|dt| dt.timestamp())
-        .unwrap_or_else(|| chrono::Utc::now().timestamp());
-
     // SizeOnDisk = only the game's installdir, not shared depot folders
     let size_on_disk = calculate_size_on_disk(&common_dir.join(install_dir_name));
 
@@ -132,7 +127,10 @@ fn generate_acf_content(
     vdf.key_value("name", &metadata.game_name);
     vdf.key_value("StateFlags", "4");
     vdf.key_value("installdir", install_dir_name);
-    vdf.key_value("LastUpdated", &last_updated.to_string());
+    // PRIVACY: LastUpdated is ALWAYS "0". The fallback otherwise records the exact
+    // download time (Utc::now), a "who/when downloaded this" fingerprint, the same
+    // class of leak as LastOwner below.
+    vdf.key_value("LastUpdated", "0");
     vdf.key_value("LastPlayed", "0");
     vdf.key_value("SizeOnDisk", &size_on_disk.to_string());
     vdf.key_value("StagingSize", "0");
@@ -257,11 +255,6 @@ pub fn write_shared_depots_acf(
     // Total size of the "Steamworks Shared" folder on disk
     let size_on_disk = calculate_size_on_disk(&common_dir.join("Steamworks Shared"));
 
-    let last_updated = metadata
-        .build_datetime_utc
-        .map(|dt| dt.timestamp())
-        .unwrap_or_else(|| chrono::Utc::now().timestamp());
-
     let mut vdf = VdfBuilder::new();
     vdf.open_section("AppState");
 
@@ -270,7 +263,8 @@ pub fn write_shared_depots_acf(
     vdf.key_value("name", "Steamworks Common Redistributables");
     vdf.key_value("StateFlags", "4");
     vdf.key_value("installdir", "Steamworks Shared");
-    vdf.key_value("LastUpdated", &last_updated.to_string());
+    // PRIVACY: LastUpdated is ALWAYS "0" (see the main generator path).
+    vdf.key_value("LastUpdated", "0");
     vdf.key_value("LastPlayed", "0");
     vdf.key_value("SizeOnDisk", &size_on_disk.to_string());
     vdf.key_value("StagingSize", "0");
