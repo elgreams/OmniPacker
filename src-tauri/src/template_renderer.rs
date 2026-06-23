@@ -206,6 +206,31 @@ pub fn create_default_template() -> Vec<TemplateBlock> {
     ]
 }
 
+/// Derives the sibling `.txt` path for the template alongside an output.
+///
+/// This is purely string-based: it does NOT probe the filesystem. The output
+/// path is either a packed directory name (e.g. `Game.Build.123.Win64.Public`)
+/// or a `.7z` archive, and the template `.txt` always sits next to it.
+///
+/// We must not rely on `Path::is_dir()` (the directory may already be gone after
+/// compression) nor on `Path::extension()` (the dotted folder name makes the
+/// "extension" the branch token like `Public`, not `7z`). Both of those caused
+/// "Output path must be a directory or .7z file" failures. Instead: strip a
+/// trailing `.7z` if present, otherwise keep the whole name, then append `.txt`.
+fn derive_template_txt_path(output_path: &PathBuf) -> Result<PathBuf, String> {
+    let file_name = output_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("Invalid output path")?;
+
+    let base = file_name
+        .strip_suffix(".7z")
+        .or_else(|| file_name.strip_suffix(".7Z"))
+        .unwrap_or(file_name);
+
+    Ok(output_path.with_file_name(format!("{}.txt", base)))
+}
+
 /// Writes rendered template to a text file next to the output
 pub fn write_template_file(
     output_path: &PathBuf,
@@ -220,19 +245,7 @@ pub fn write_template_file(
     let rendered = render_template(blocks, metadata)?;
 
     // Determine output file path
-    let txt_path = if output_path.is_dir() {
-        // If it's a directory, use the directory name
-        let dir_name = output_path
-            .file_name()
-            .ok_or("Invalid output path")?
-            .to_string_lossy();
-        output_path.with_file_name(format!("{}.txt", dir_name))
-    } else if output_path.extension().and_then(|e| e.to_str()) == Some("7z") {
-        // If it's a .7z file, replace extension with .txt
-        output_path.with_extension("txt")
-    } else {
-        return Err("Output path must be a directory or .7z file".to_string());
-    };
+    let txt_path = derive_template_txt_path(output_path)?;
 
     // Write file
     fs::write(&txt_path, rendered)
@@ -295,5 +308,42 @@ mod tests {
         assert!(result.contains("Balatro [Win64]"));
         assert!(result.contains("[spoiler=Test Depots]"));
         assert!(result.contains("Balatro Content: 4851806656204679952"));
+    }
+
+    #[test]
+    fn test_derive_txt_path_dotted_directory() {
+        // The packed output folder name has dots; the trailing token (`Public`)
+        // must NOT be treated as a file extension. Regression for
+        // "Output path must be a directory or .7z file".
+        let dir = PathBuf::from("/out/Garrys.Mod.Build.23150004.Win64.Public");
+        let txt = derive_template_txt_path(&dir).unwrap();
+        assert_eq!(
+            txt,
+            PathBuf::from("/out/Garrys.Mod.Build.23150004.Win64.Public.txt")
+        );
+    }
+
+    #[test]
+    fn test_derive_txt_path_7z_archive() {
+        let archive = PathBuf::from("/out/Garrys.Mod.Build.23150004.Win64.Public.7z");
+        let txt = derive_template_txt_path(&archive).unwrap();
+        assert_eq!(
+            txt,
+            PathBuf::from("/out/Garrys.Mod.Build.23150004.Win64.Public.txt")
+        );
+    }
+
+    #[test]
+    fn test_derive_txt_path_7z_uppercase() {
+        let archive = PathBuf::from("/out/Game.7Z");
+        let txt = derive_template_txt_path(&archive).unwrap();
+        assert_eq!(txt, PathBuf::from("/out/Game.txt"));
+    }
+
+    #[test]
+    fn test_derive_txt_path_plain_name() {
+        let dir = PathBuf::from("/out/Game");
+        let txt = derive_template_txt_path(&dir).unwrap();
+        assert_eq!(txt, PathBuf::from("/out/Game.txt"));
     }
 }
