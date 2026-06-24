@@ -491,6 +491,10 @@ fn derive_metadata_from_download(
     );
     job_metadata.game_description = game_description;
     job_metadata.website = website;
+    // Best-effort: Steam's canonical install-folder name (config.installdir).
+    // When available this is used verbatim as the merged depot folder name in
+    // finalization; otherwise finalization falls back to the depot/game name.
+    job_metadata.install_dir = crate::steamcmd_api::fetch_install_dir(&job.app_id);
 
     // Write job.json
     job_metadata.write_to_dir(staging_dir)?;

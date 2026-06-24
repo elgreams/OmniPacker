@@ -123,6 +123,31 @@ pub fn fetch_public_buildid(appid: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Returns Steam's canonical install-folder name for an app, if available.
+///
+/// This is the `config.installdir` value (e.g. "ProjectZomboid"), which is the
+/// exact `steamapps/common/<folder>` name real Steam uses. It differs from both
+/// the store `common.name` ("Project Zomboid") and the per-depot names
+/// ("Project Zomboid - windows"), so it is the only reliable source for the
+/// merged depot folder name. Returns `None` on any failure; callers must fall
+/// back to deriving a name from the depot/game name.
+pub fn fetch_install_dir(appid: &str) -> Option<String> {
+    let app_data = match fetch_appinfo(appid) {
+        Ok(data) => data,
+        Err(err) => {
+            debug_eprintln!("[STEAMCMD] installdir lookup unavailable for {}: {}", appid, err);
+            return None;
+        }
+    };
+
+    app_data
+        .get("config")
+        .and_then(|c| c.get("installdir"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// Clears the appinfo cache (useful for testing or forcing refresh).
 #[allow(dead_code)]
 pub fn clear_cache() {
@@ -138,6 +163,7 @@ mod tests {
     /// Builds an appinfo Value matching the real api.steamcmd.net shape.
     fn sample_appinfo() -> Value {
         serde_json::json!({
+            "config": { "installdir": "ProjectZomboid" },
             "depots": {
                 "72840": { "dlcappid": "72840", "manifests": { "public": { "gid": "1" } } },
                 "22475": { "dlcappid": "22475" },
@@ -177,6 +203,16 @@ mod tests {
         // "branches" is not a depot and must be skipped
         assert!(!map.contains_key("branches"));
         assert_eq!(map.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_install_dir() {
+        let data = sample_appinfo();
+        let installdir = data
+            .get("config")
+            .and_then(|c| c.get("installdir"))
+            .and_then(|v| v.as_str());
+        assert_eq!(installdir, Some("ProjectZomboid"));
     }
 
     #[test]

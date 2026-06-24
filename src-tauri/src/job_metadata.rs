@@ -60,6 +60,13 @@ pub struct JobMetadataFile {
     pub primary_depot_id: String,
     /// Human-readable game name from Steam
     pub game_name: String,
+    /// Steam's canonical install-folder name (`config.installdir`), e.g.
+    /// "ProjectZomboid". This is the exact `steamapps/common/<folder>` name real
+    /// Steam uses for the merged depot content. Best-effort from api.steamcmd.net;
+    /// absent when unavailable, in which case finalization derives the folder name
+    /// from the depot/game name instead. Absent for older job.json files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_dir: Option<String>,
     /// Build ID (SteamDB-compatible when possible)
     pub build_id: String,
     /// Source of the build ID
@@ -104,6 +111,7 @@ impl JobMetadataFile {
             platform,
             primary_depot_id,
             game_name,
+            install_dir: None,
             build_id,
             build_id_source,
             build_datetime_utc,
