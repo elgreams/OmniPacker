@@ -514,6 +514,8 @@ fn map_platform_for_output(os: &str) -> String {
     match os {
         "Windows x64" => "Win64".to_string(),
         "Windows x86" => "Win32".to_string(),
+        "Linux x64" => "Linux64".to_string(),
+        "Linux x86" => "Linux32".to_string(),
         "Linux" => "Linux64".to_string(),
         "macOS x64" => "MacOS64".to_string(),
         "macOS" => "MacOS64".to_string(),
