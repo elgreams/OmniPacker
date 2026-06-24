@@ -32,12 +32,12 @@ body {
 
 body.fixed-layout {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 1140px;
-  height: 760px;
-  transform-origin: center center;
-  transform: translate(-50%, -50%) scale(var(--ui-scale, 1));
+  top: 0;
+  left: 0;
+  width: var(--ui-width, 1140px);
+  height: var(--ui-height, 760px);
+  transform-origin: top left;
+  transform: scale(var(--ui-scale, 1));
 }
 
 body.fluid-layout {

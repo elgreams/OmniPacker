@@ -4772,7 +4772,9 @@ void refreshProfileLibrary();
 void loadSavedLoginDetails();
 
 // Scale the fixed-size UI to fit the window, preserving proportions.
-// Below the design size: use CSS transform to shrink proportionally.
+// Below the design size: apply a single uniform scale (so controls shrink
+// evenly, no distortion) but expand the logical layout box to the window's
+// aspect ratio so the layout reflows to fill it instead of leaving bars.
 // At or above design size: let the layout flow naturally to fill the space.
 const DESIGN_WIDTH = 1140;
 const DESIGN_HEIGHT = 760;
@@ -4784,16 +4786,22 @@ function applyUiScale() {
   );
 
   const body = document.body;
+  const root = document.documentElement;
   if (scale < 1) {
-    // Small window: fixed size + transform scale down
+    // Small window: uniform scale down. The logical layout box is grown to
+    // winW/scale x winH/scale so that, once scaled, it renders at exactly the
+    // window size. The looser axis gains extra logical room (always >= design)
+    // which the grid/flex layout fills, eliminating the letterbox bars.
     body.classList.add("fixed-layout");
     body.classList.remove("fluid-layout");
-    document.documentElement.style.setProperty("--ui-scale", String(scale));
+    root.style.setProperty("--ui-scale", String(scale));
+    root.style.setProperty("--ui-width", `${window.innerWidth / scale}px`);
+    root.style.setProperty("--ui-height", `${window.innerHeight / scale}px`);
   } else {
     // Large window: flow naturally
     body.classList.remove("fixed-layout");
     body.classList.add("fluid-layout");
-    document.documentElement.style.setProperty("--ui-scale", "1");
+    root.style.setProperty("--ui-scale", "1");
   }
 }
 
