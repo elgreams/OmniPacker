@@ -1253,58 +1253,63 @@ fn run_depotdownloader_worker(
                         }
                         // === END COMPRESSION ===
 
-                        if compression_cancelled {
-                            // The user cancelled during compression. Skip template
-                            // generation, mark the job cancelled (not completed, so
-                            // the frontend halts the queue instead of advancing),
-                            // and clean up staging like the download-cancel path.
-                            emit_status(&app_handle_clone, "cancelled", None, &job_id_for_monitor);
-                            let _ = cleanup_staging_dir(&app_handle_clone, &job_id_for_monitor);
-                        } else {
-                            // === TEMPLATE GENERATION ===
-                            // Generate template text file with job metadata
-                            if let Some(template_metadata) = app_handle_clone
-                                .state::<TemplateMetadataState>()
-                                .get()
-                            {
-                                emit_log(
-                                    &app_handle_clone,
-                                    "system",
-                                    "Generating template file...",
-                                    &job_id_for_monitor,
-                                );
+                        // === TEMPLATE GENERATION ===
+                        // Generate the template text file next to the output. This
+                        // runs even when compression was cancelled: the uncompressed
+                        // output folder is kept in that case (the partial archive was
+                        // removed, so final_output_path points at the folder), and the
+                        // template describes the output regardless of whether it was
+                        // ever compressed.
+                        if let Some(template_metadata) = app_handle_clone
+                            .state::<TemplateMetadataState>()
+                            .get()
+                        {
+                            emit_log(
+                                &app_handle_clone,
+                                "system",
+                                "Generating template file...",
+                                &job_id_for_monitor,
+                            );
 
-                                // Load user's template (or use default)
-                                let template_blocks = load_template_data_internal(&app_handle_clone)
-                                    .map(|payload| payload.blocks);
+                            // Load user's template (or use default)
+                            let template_blocks = load_template_data_internal(&app_handle_clone)
+                                .map(|payload| payload.blocks);
 
-                                let template_blocks_ref = template_blocks.as_ref().map(|v| v.as_slice());
+                            let template_blocks_ref = template_blocks.as_ref().map(|v| v.as_slice());
 
-                                match write_template_file(&final_output_path, &template_metadata, template_blocks_ref) {
-                                    Ok(()) => {
-                                        emit_log(
-                                            &app_handle_clone,
-                                            "system",
-                                            "Template file generated successfully.",
-                                            &job_id_for_monitor,
-                                        );
-                                    }
-                                    Err(err) => {
-                                        emit_log(
-                                            &app_handle_clone,
-                                            "system",
-                                            &format!("Failed to generate template file: {}", err),
-                                            &job_id_for_monitor,
-                                        );
-                                    }
+                            match write_template_file(&final_output_path, &template_metadata, template_blocks_ref) {
+                                Ok(()) => {
+                                    emit_log(
+                                        &app_handle_clone,
+                                        "system",
+                                        "Template file generated successfully.",
+                                        &job_id_for_monitor,
+                                    );
+                                }
+                                Err(err) => {
+                                    emit_log(
+                                        &app_handle_clone,
+                                        "system",
+                                        &format!("Failed to generate template file: {}", err),
+                                        &job_id_for_monitor,
+                                    );
                                 }
                             }
-                            // === END TEMPLATE GENERATION ===
-
-                            emit_status(&app_handle_clone, "completed", Some(0), &job_id_for_monitor);
-                            // Cleanup staging after successful finalization
-                            let _ = cleanup_staging_dir(&app_handle_clone, &job_id_for_monitor);
                         }
+                        // === END TEMPLATE GENERATION ===
+
+                        if compression_cancelled {
+                            // The user cancelled during compression. The uncompressed
+                            // output folder and its template are kept; mark the job
+                            // cancelled (not completed, so the frontend halts the queue
+                            // instead of advancing) and clean up staging.
+                            emit_status(&app_handle_clone, "cancelled", None, &job_id_for_monitor);
+                        } else {
+                            emit_status(&app_handle_clone, "completed", Some(0), &job_id_for_monitor);
+                        }
+                        // Cleanup staging after finalization (kept output folder is
+                        // separate from staging).
+                        let _ = cleanup_staging_dir(&app_handle_clone, &job_id_for_monitor);
                     }
                     Err(err) => {
                         emit_log(
