@@ -193,25 +193,18 @@ fn build_temp_output(
     // Determine installdir: must match the on-disk folder name that all non-shared depot
     // files will be merged into. Steam's canonical `config.installdir` (e.g. "ProjectZomboid")
     // is the authoritative source and is used verbatim when available. When it isn't (the
-    // best-effort api.steamcmd.net lookup failed), fall back to the primary depot's name, then
-    // the game name. Every path is sanitized: raw names can contain characters that are illegal
-    // in filesystem paths (e.g. the colon in "Fallout: New Vegas"), which is fine on Linux but
-    // fails on Windows (os error 267). sanitize_game_name is a no-op for already-clean installdir
-    // values like "ProjectZomboid".
+    // best-effort api.steamcmd.net lookup failed), fall back to the game name. The depot name
+    // is deliberately NOT used: it carries a platform suffix (e.g. "Project Zomboid - windows")
+    // that produces ugly folders like "Project.Zomboid.-.windows". The game name yields a clean
+    // "Project.Zomboid" that also matches the archive filename. Every path is sanitized: raw
+    // names can contain characters that are illegal in filesystem paths (e.g. the colon in
+    // "Fallout: New Vegas"), which is fine on Linux but fails on Windows (os error 267).
+    // sanitize_game_name is a no-op for already-clean installdir values like "ProjectZomboid".
     let install_dir_name = metadata
         .install_dir
         .as_deref()
         .map(sanitize_game_name)
         .filter(|name| !name.is_empty())
-        .or_else(|| {
-            metadata
-                .depots
-                .iter()
-                .find(|d| d.depot_id == metadata.primary_depot_id)
-                .map(|d| d.depot_name.clone())
-                .map(|name| sanitize_game_name(&name))
-                .filter(|name| !name.is_empty())
-        })
         .unwrap_or_else(|| sanitize_game_name(&metadata.game_name));
 
     // Compute per-depot sizes from the staging structure BEFORE the merge.
