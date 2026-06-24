@@ -275,6 +275,16 @@
           </div>
 
           <div class="settings-group">
+            <label class="settings-label" for="uploader-name-input" data-i18n="settings.uploaderName">
+              Uploader name:
+            </label>
+            <input id="uploader-name-input" type="text" />
+            <span class="settings-hint" data-i18n="settings.uploaderNameHint">
+              Inserted into the {{username}} token used by the Crew profile and any custom profile that references it.
+            </span>
+          </div>
+
+          <div class="settings-group">
             <button type="button" class="settings-delete-login-button" data-i18n="settings.deleteLogin">
               Delete Saved Login Data
             </button>
@@ -299,14 +309,26 @@
         <div class="template-header">
           <div class="modal-title" data-i18n="template.title">Template Editor</div>
           <div class="template-header-actions">
-            <button type="button" class="template-mode-button" data-i18n="template.mode.toCrew">
-              Switch to Crew Mode
-            </button>
             <button type="button" class="template-close-button" data-i18n="action.close">Close</button>
           </div>
         </div>
         <div class="template-body">
           <section class="template-panel template-builder-panel">
+            <div class="template-profile-bar">
+              <label class="template-profile-label" data-i18n="template.profile.label">Profile:</label>
+              <div class="checkbox-dropdown template-profile-dropdown" id="profile-dropdown">
+                <button
+                  type="button"
+                  class="checkbox-dropdown-button"
+                  aria-haspopup="true"
+                  aria-expanded="false"
+                >
+                  <span class="checkbox-dropdown-summary"></span>
+                  <span class="checkbox-dropdown-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="checkbox-dropdown-panel template-profile-panel" hidden></div>
+              </div>
+            </div>
             <div class="template-panel-header">
               <div class="template-panel-title" data-i18n="template.builder">Block Builder</div>
               <div class="template-panel-actions">
@@ -317,25 +339,14 @@
               </div>
             </div>
             <div class="template-status" aria-live="polite"></div>
-            <div class="template-crew-settings" hidden>
-              <div class="settings-group">
-                <label class="settings-label" for="crew-username-input" data-i18n="template.crew.username">
-                  Uploader name:
-                </label>
-                <input id="crew-username-input" type="text" />
-              </div>
-              <div class="settings-group">
-                <label class="settings-label" for="crew-filehost-input" data-i18n="template.crew.filehost">
-                  File host:
-                </label>
-                <input id="crew-filehost-input" type="text" />
-              </div>
+            <div class="template-unsaved-notice" data-i18n="template.unsaved" hidden>
+              Unsaved changes — save this template to add it to your profiles.
             </div>
             <div class="template-blocks"></div>
             <div class="template-file-actions">
-              <button type="button" class="template-load-button" data-i18n="template.load">Load JSON</button>
-              <button type="button" class="template-save-button" data-i18n="template.save">Save JSON</button>
-              <button type="button" class="template-reset-button" data-i18n="template.reset">Reset to Default</button>
+              <button type="button" class="template-save-button" data-i18n="template.save">Save Template</button>
+              <button type="button" class="template-load-button" data-i18n="template.import">Import JSON</button>
+              <button type="button" class="template-open-folder-button" data-i18n="template.openFolder">Open Profile Folder</button>
               <input class="template-load-input" type="file" accept="application/json" hidden />
             </div>
           </section>
@@ -355,35 +366,28 @@
       </div>
     </div>
 
-    <div class="modal-overlay template-confirm-overlay" role="dialog" aria-modal="true">
-      <div class="modal template-confirm-modal">
-        <div class="modal-title" data-i18n="template.confirm.title">Reset to Default</div>
-        <div class="template-confirm-message" data-i18n="template.confirm.save">
-          Save current template to JSON before resetting?
-        </div>
+    <div class="modal-overlay template-save-overlay" role="dialog" aria-modal="true">
+      <div class="modal template-save-modal">
+        <div class="modal-title" data-i18n="template.save.title">Save Template Profile</div>
+        <label class="settings-label" for="template-save-name" data-i18n="template.save.nameLabel">
+          Profile name:
+        </label>
+        <input id="template-save-name" type="text" />
+        <div class="template-save-error" aria-live="polite"></div>
         <div class="modal-actions">
-          <button type="button" class="template-confirm-yes" data-i18n="action.yes">Yes</button>
-          <button type="button" class="template-confirm-no" data-i18n="action.no">No</button>
+          <button type="button" class="template-save-confirm" data-i18n="template.save.confirm">Save</button>
+          <button type="button" class="template-save-cancel" data-i18n="action.cancel">Cancel</button>
         </div>
       </div>
     </div>
 
-    <div class="modal-overlay template-mode-confirm-overlay" role="dialog" aria-modal="true">
-      <div class="modal template-mode-confirm-modal">
-        <div class="modal-title template-mode-confirm-title" data-i18n="template.modeConfirm.title">
-          Switch Template Mode
-        </div>
-        <div class="template-mode-confirm-message" data-i18n="template.modeConfirm.message">
-          Switching modes will replace your current template with the preset. What would you like to do?
-        </div>
+    <div class="modal-overlay template-generic-confirm-overlay" role="dialog" aria-modal="true">
+      <div class="modal template-generic-confirm-modal">
+        <div class="modal-title template-generic-confirm-title"></div>
+        <div class="template-generic-confirm-message"></div>
         <div class="modal-actions">
-          <button type="button" class="template-mode-confirm-save" data-i18n="template.modeConfirm.save">
-            Save &amp; Switch
-          </button>
-          <button type="button" class="template-mode-confirm-replace" data-i18n="template.modeConfirm.replace">
-            Replace
-          </button>
-          <button type="button" class="template-mode-confirm-cancel" data-i18n="action.cancel">Cancel</button>
+          <button type="button" class="template-generic-confirm-yes" data-i18n="action.yes">Yes</button>
+          <button type="button" class="template-generic-confirm-no" data-i18n="action.no">No</button>
         </div>
       </div>
     </div>

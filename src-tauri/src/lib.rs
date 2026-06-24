@@ -28,7 +28,9 @@ use login_store::{delete_login_data, load_login_data, save_login_data};
 use output_conflict::{resolve_output_conflict, OutputConflictState};
 use output_dir::{get_output_folder, open_output_folder};
 use template_metadata::{get_template_metadata, TemplateMetadataState};
-use template_store::{load_template_data, save_template_data};
+use template_store::{
+    delete_profile, list_profiles, open_profiles_folder, save_profile,
+};
 use update_check::{check_for_update, get_app_version, open_external_url};
 use zip_runner::{cancel_7zip, run_7zip, SevenZipRunnerState};
 use std::sync::OnceLock;
@@ -136,8 +138,10 @@ pub fn run() {
             load_login_data,
             delete_login_data,
             get_template_metadata,
-            save_template_data,
-            load_template_data,
+            list_profiles,
+            save_profile,
+            delete_profile,
+            open_profiles_folder,
             resolve_output_conflict,
             check_for_update,
             get_app_version,

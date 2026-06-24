@@ -64,25 +64,26 @@ const templateBlockSelect = document.querySelector(".template-block-select");
 const templateAddBlockButton = document.querySelector(".template-add-block-button");
 const templateLoadButton = document.querySelector(".template-load-button");
 const templateSaveButton = document.querySelector(".template-save-button");
-const templateResetButton = document.querySelector(".template-reset-button");
-const templateModeButton = document.querySelector(".template-mode-button");
-const templateCrewSettings = document.querySelector(".template-crew-settings");
-const crewUsernameInput = document.getElementById("crew-username-input");
-const crewFilehostInput = document.getElementById("crew-filehost-input");
+const templateOpenFolderButton = document.querySelector(".template-open-folder-button");
+const templateUnsavedNotice = document.querySelector(".template-unsaved-notice");
+const profileDropdown = document.getElementById("profile-dropdown");
+const profileOptionsContainer = document.querySelector(".template-profile-panel");
+const uploaderNameInput = document.getElementById("uploader-name-input");
 const templateLoadInput = document.querySelector(".template-load-input");
 const templateCopyButton = document.querySelector(".template-copy-button");
 const templatePreviewOutput = document.querySelector(".template-preview-output");
 const templatePreviewMeta = document.querySelector(".template-preview-meta");
 const templateStatus = document.querySelector(".template-status");
-const templateConfirmOverlay = document.querySelector(".template-confirm-overlay");
-const templateConfirmMessage = document.querySelector(".template-confirm-message");
-const templateConfirmYesButton = document.querySelector(".template-confirm-yes");
-const templateConfirmNoButton = document.querySelector(".template-confirm-no");
-const templateModeConfirmOverlay = document.querySelector(".template-mode-confirm-overlay");
-const templateModeConfirmMessage = document.querySelector(".template-mode-confirm-message");
-const templateModeConfirmSaveButton = document.querySelector(".template-mode-confirm-save");
-const templateModeConfirmReplaceButton = document.querySelector(".template-mode-confirm-replace");
-const templateModeConfirmCancelButton = document.querySelector(".template-mode-confirm-cancel");
+const templateSaveOverlay = document.querySelector(".template-save-overlay");
+const templateSaveNameInput = document.getElementById("template-save-name");
+const templateSaveError = document.querySelector(".template-save-error");
+const templateSaveConfirmButton = document.querySelector(".template-save-confirm");
+const templateSaveCancelButton = document.querySelector(".template-save-cancel");
+const templateGenericConfirmOverlay = document.querySelector(".template-generic-confirm-overlay");
+const templateGenericConfirmTitle = document.querySelector(".template-generic-confirm-title");
+const templateGenericConfirmMessage = document.querySelector(".template-generic-confirm-message");
+const templateGenericConfirmYes = document.querySelector(".template-generic-confirm-yes");
+const templateGenericConfirmNo = document.querySelector(".template-generic-confirm-no");
 const outputConflictOverlay = document.querySelector(".output-conflict-overlay");
 const outputConflictMessage = document.querySelector(".output-conflict-message");
 const outputConflictPath = document.querySelector(".output-conflict-path");
@@ -119,15 +120,13 @@ const settingsState = {
   splitCustomUnit: "m",
   defaultQrLogin: false,
   language: "en",
-  defaultTemplate: null,
-  lastTemplateSaveDir: null,
-  // Template editor mode: "standard" or "crew". Determines which preset the
-  // Reset-to-Default action produces and whether crew tokens (username/filehost)
-  // are populated.
-  templateMode: "standard",
-  // Crew-only uploader settings, surfaced in the editor when crew mode is on.
-  crewUsername: "",
-  crewFilehost: "",
+  // Global uploader handle, inserted into the {{username}} token by any profile
+  // (built-in crew or custom) that references it.
+  uploaderName: "",
+  // Names of the template profiles selected for generation. Built-in "standard"
+  // and "crew" are always available; custom profiles live on disk. Each selected
+  // profile produces its own .txt next to a job's output.
+  selectedProfiles: ["standard"],
   // Version the user chose to skip via the update banner ("Skip this version").
   // The banner won't show again until a release newer than this appears.
   skippedUpdateVersion: null,
@@ -245,6 +244,8 @@ const translations = {
     "settings.splitArchiveHint":
       "Splits the output into multiple volumes (archive.7z.001, .002, …) of the chosen size. Reassemble by extracting the .001 file.",
     "settings.defaultQrLogin": "Default to QR Login",
+    "settings.uploaderName": "Uploader name:",
+    "settings.uploaderNameHint": "Used for the {{username}} token in templates.",
     "settings.deleteLogin": "Delete Saved Login Data",
     "update.available": "OmniPacker v{{version}} is available.",
     "update.download": "Download",
@@ -260,21 +261,25 @@ const translations = {
     "template.preview": "Live Preview",
     "template.addBlock": "Add Block",
     "template.copy": "Copy BBCode",
-    "template.save": "Save JSON",
-    "template.load": "Load JSON",
-    "template.reset": "Reset to Default",
-    "template.mode.toCrew": "Switch to Crew Mode",
-    "template.mode.toStandard": "Switch to Standard Mode",
-    "template.crew.username": "Uploader name:",
-    "template.crew.filehost": "File host:",
-    "template.status.modeCrew": "Crew mode enabled.",
-    "template.status.modeStandard": "Standard mode enabled.",
-    "template.modeConfirm.title": "Switch Template Mode",
-    "template.modeConfirm.toCrew": "Switch to crew mode? This will replace your current template with the crew preset.",
-    "template.modeConfirm.toStandard": "Switch to standard mode? This will replace your current template with the standard preset.",
-    "template.modeConfirm.save": "Save & Switch",
-    "template.modeConfirm.replace": "Replace",
-    "template.modeConfirm.message": "Switching modes will replace your current template with the preset. What would you like to do?",
+    "template.save": "Save Template",
+    "template.import": "Import JSON",
+    "template.openFolder": "Open Profile Folder",
+    "template.unsaved": "Unsaved changes. Save this template to add it to your profiles.",
+    "template.profile.label": "Profile:",
+    "template.profile.editHint": "Load this profile into the editor",
+    "template.profile.generateHint": "Checked profiles are generated for each job",
+    "template.profile.deleteHint": "Delete this profile",
+    "template.save.title": "Save Template Profile",
+    "template.save.nameLabel": "Profile name:",
+    "template.save.confirm": "Save",
+    "template.save.errorEmpty": "Enter a profile name.",
+    "template.save.errorReserved": "That name is reserved. Choose a different name.",
+    "template.overwrite.title": "Overwrite Profile",
+    "template.overwrite.message": "A profile named \"{{name}}\" already exists. Overwrite it?",
+    "template.delete.title": "Delete Profile",
+    "template.delete.message": "Delete the profile \"{{name}}\"? This cannot be undone.",
+    "template.unsavedConfirm.title": "Unsaved Changes",
+    "template.unsavedConfirm.message": "You have unsaved changes to this template. Discard them?",
     "template.block.title": "Title Block",
     "template.block.version": "Version Block",
     "template.block.depot_list": "Depot List Block",
@@ -287,7 +292,7 @@ const translations = {
     "template.field.depotLine": "Depot line template",
     "template.field.useCode": "Wrap in [code=text]",
     "template.help.chipHint": "Insert:",
-    "template.help.crewOnly": "(only set in Crew mode)",
+    "template.help.crewOnly": "(set from the Uploader name setting)",
     "template.help.field.game_name": "The game's name (e.g. Balatro).",
     "template.help.field.os": "The operating system you downloaded for (e.g. Windows x64).",
     "template.help.field.branch": "The Steam branch (e.g. public).",
@@ -296,8 +301,7 @@ const translations = {
     "template.help.field.app_id": "The Steam App ID number.",
     "template.help.field.game_description": "The game's store description text.",
     "template.help.field.website": "The game's official website URL.",
-    "template.help.field.username": "Your uploader name from Crew settings.",
-    "template.help.field.filehost": "The file host from Crew settings.",
+    "template.help.field.username": "Your uploader name from Settings.",
     "template.help.field.depot_id": "The depot's numeric ID.",
     "template.help.field.depot_name": "The depot's name.",
     "template.help.field.manifest_id": "The depot's manifest ID number.",
@@ -306,10 +310,9 @@ const translations = {
     "template.action.remove": "Remove",
     "template.status.ready": "Template ready.",
     "template.status.loaded": "Template loaded.",
-    "template.status.saved": "Template saved.",
-    "template.status.reset": "Template reset to default.",
-    "template.confirm.title": "Reset to Default",
-    "template.confirm.save": "Save current template to JSON before resetting?",
+    "template.status.saved": "Profile saved.",
+    "template.status.deleted": "Profile deleted.",
+    "template.status.imported": "Profile imported.",
     "template.error.noMetadata": "No job metadata available. Run a job to preview.",
     "template.error.invalidField": "Unsupported field(s): {{fields}}",
     "template.error.depotLimit": "Depot count exceeds limit of {{limit}}.",
@@ -318,6 +321,8 @@ const translations = {
     "template.error.invalidFile": "Invalid template file.",
     "template.error.loadFailed": "Failed to load template: {{error}}",
     "template.error.saveFailed": "Failed to save template: {{error}}",
+    "template.error.deleteFailed": "Failed to delete profile: {{error}}",
+    "template.error.openFolderFailed": "Failed to open profile folder: {{error}}",
     "template.preview.metaReady": "Using metadata from the last completed job.",
     "template.preview.metaMissing": "Preview requires a completed job to supply metadata.",
     "template.preview.metaDefault": "Using example metadata for preview. Run a job to use real data.",
@@ -452,6 +457,8 @@ const translations = {
     "settings.splitArchiveHint":
       "Divide la salida en varios volúmenes (archive.7z.001, .002, …) del tamaño elegido. Para reensamblar, extrae el archivo .001.",
     "settings.defaultQrLogin": "Usar QR de forma predeterminada",
+    "settings.uploaderName": "Nombre del autor:",
+    "settings.uploaderNameHint": "Se usa para el token {{username}} en las plantillas.",
     "settings.deleteLogin": "Eliminar datos de inicio de sesión guardados",
     "update.available": "OmniPacker v{{version}} ya está disponible.",
     "update.download": "Descargar",
@@ -467,21 +474,25 @@ const translations = {
     "template.preview": "Vista previa en vivo",
     "template.addBlock": "Agregar bloque",
     "template.copy": "Copiar BBCode",
-    "template.save": "Guardar JSON",
-    "template.load": "Cargar JSON",
-    "template.reset": "Restablecer a predeterminado",
-    "template.mode.toCrew": "Cambiar a modo Crew",
-    "template.mode.toStandard": "Cambiar a modo estándar",
-    "template.crew.username": "Nombre del autor:",
-    "template.crew.filehost": "Servidor de archivos:",
-    "template.status.modeCrew": "Modo Crew activado.",
-    "template.status.modeStandard": "Modo estándar activado.",
-    "template.modeConfirm.title": "Cambiar modo de plantilla",
-    "template.modeConfirm.toCrew": "¿Cambiar al modo Crew? Esto reemplazará tu plantilla actual con la plantilla Crew.",
-    "template.modeConfirm.toStandard": "¿Cambiar al modo estándar? Esto reemplazará tu plantilla actual con la plantilla estándar.",
-    "template.modeConfirm.save": "Guardar y cambiar",
-    "template.modeConfirm.replace": "Reemplazar",
-    "template.modeConfirm.message": "Cambiar de modo reemplazará tu plantilla actual con la plantilla predeterminada. ¿Qué deseas hacer?",
+    "template.save": "Guardar plantilla",
+    "template.import": "Importar JSON",
+    "template.openFolder": "Abrir carpeta de perfiles",
+    "template.unsaved": "Cambios sin guardar. Guarda esta plantilla para añadirla a tus perfiles.",
+    "template.profile.label": "Perfil:",
+    "template.profile.editHint": "Cargar este perfil en el editor",
+    "template.profile.generateHint": "Los perfiles marcados se generan en cada trabajo",
+    "template.profile.deleteHint": "Eliminar este perfil",
+    "template.save.title": "Guardar perfil de plantilla",
+    "template.save.nameLabel": "Nombre del perfil:",
+    "template.save.confirm": "Guardar",
+    "template.save.errorEmpty": "Introduce un nombre de perfil.",
+    "template.save.errorReserved": "Ese nombre está reservado. Elige otro nombre.",
+    "template.overwrite.title": "Sobrescribir perfil",
+    "template.overwrite.message": "Ya existe un perfil llamado \"{{name}}\". ¿Sobrescribirlo?",
+    "template.delete.title": "Eliminar perfil",
+    "template.delete.message": "¿Eliminar el perfil \"{{name}}\"? Esto no se puede deshacer.",
+    "template.unsavedConfirm.title": "Cambios sin guardar",
+    "template.unsavedConfirm.message": "Tienes cambios sin guardar en esta plantilla. ¿Descartarlos?",
     "template.block.title": "Bloque de título",
     "template.block.version": "Bloque de versión",
     "template.block.depot_list": "Bloque de lista de depósitos",
@@ -494,7 +505,7 @@ const translations = {
     "template.field.depotLine": "Plantilla de línea de depósito",
     "template.field.useCode": "Envolver en [code=text]",
     "template.help.chipHint": "Insertar:",
-    "template.help.crewOnly": "(solo se define en modo Crew)",
+    "template.help.crewOnly": "(se define en el ajuste Nombre del autor)",
     "template.help.field.game_name": "El nombre del juego (p. ej. Balatro).",
     "template.help.field.os": "El sistema operativo que descargaste (p. ej. Windows x64).",
     "template.help.field.branch": "La rama de Steam (p. ej. public).",
@@ -503,8 +514,7 @@ const translations = {
     "template.help.field.app_id": "El número de App ID de Steam.",
     "template.help.field.game_description": "El texto de descripción de la tienda del juego.",
     "template.help.field.website": "La URL del sitio web oficial del juego.",
-    "template.help.field.username": "Tu nombre de uploader de la configuración Crew.",
-    "template.help.field.filehost": "El servidor de archivos de la configuración Crew.",
+    "template.help.field.username": "Tu nombre de uploader desde Ajustes.",
     "template.help.field.depot_id": "El ID numérico del depósito.",
     "template.help.field.depot_name": "El nombre del depósito.",
     "template.help.field.manifest_id": "El número de ID de manifiesto del depósito.",
@@ -513,10 +523,9 @@ const translations = {
     "template.action.remove": "Eliminar",
     "template.status.ready": "Plantilla lista.",
     "template.status.loaded": "Plantilla cargada.",
-    "template.status.saved": "Plantilla guardada.",
-    "template.status.reset": "Plantilla restablecida al valor predeterminado.",
-    "template.confirm.title": "Restablecer a predeterminado",
-    "template.confirm.save": "¿Guardar la plantilla actual en JSON antes de restablecer?",
+    "template.status.saved": "Perfil guardado.",
+    "template.status.deleted": "Perfil eliminado.",
+    "template.status.imported": "Perfil importado.",
     "template.error.noMetadata": "No hay metadatos del trabajo. Ejecute una tarea para previsualizar.",
     "template.error.invalidField": "Campo(s) no compatible(s): {{fields}}",
     "template.error.depotLimit": "La cantidad de depósitos supera el límite de {{limit}}.",
@@ -525,6 +534,8 @@ const translations = {
     "template.error.invalidFile": "Archivo de plantilla no válido.",
     "template.error.loadFailed": "Error al cargar la plantilla: {{error}}",
     "template.error.saveFailed": "Error al guardar la plantilla: {{error}}",
+    "template.error.deleteFailed": "Error al eliminar el perfil: {{error}}",
+    "template.error.openFolderFailed": "Error al abrir la carpeta de perfiles: {{error}}",
     "template.preview.metaReady": "Usando metadatos del último trabajo completado.",
     "template.preview.metaMissing": "La vista previa requiere un trabajo completado para obtener metadatos.",
     "template.preview.metaDefault": "Usando metadatos de ejemplo para la vista previa. Ejecute una tarea para usar datos reales.",
@@ -661,6 +672,8 @@ const translations = {
     "settings.splitArchiveHint":
       "Divise la sortie en plusieurs volumes (archive.7z.001, .002, …) de la taille choisie. Pour réassembler, extrayez le fichier .001.",
     "settings.defaultQrLogin": "Utiliser QR par défaut",
+    "settings.uploaderName": "Nom de l'uploader :",
+    "settings.uploaderNameHint": "Utilisé pour le jeton {{username}} dans les modèles.",
     "settings.deleteLogin": "Supprimer les identifiants enregistrés",
     "update.available": "OmniPacker v{{version}} est disponible.",
     "update.download": "Télécharger",
@@ -676,21 +689,25 @@ const translations = {
     "template.preview": "Aperçu en direct",
     "template.addBlock": "Ajouter un bloc",
     "template.copy": "Copier le BBCode",
-    "template.save": "Enregistrer le JSON",
-    "template.load": "Charger le JSON",
-    "template.reset": "Réinitialiser par défaut",
-    "template.mode.toCrew": "Passer en mode Crew",
-    "template.mode.toStandard": "Passer en mode standard",
-    "template.crew.username": "Nom de l'uploader :",
-    "template.crew.filehost": "Hébergeur de fichiers :",
-    "template.status.modeCrew": "Mode Crew activé.",
-    "template.status.modeStandard": "Mode standard activé.",
-    "template.modeConfirm.title": "Changer de mode de modèle",
-    "template.modeConfirm.toCrew": "Passer en mode Crew ? Cela remplacera votre modèle actuel par le modèle Crew.",
-    "template.modeConfirm.toStandard": "Passer en mode standard ? Cela remplacera votre modèle actuel par le modèle standard.",
-    "template.modeConfirm.save": "Enregistrer et changer",
-    "template.modeConfirm.replace": "Remplacer",
-    "template.modeConfirm.message": "Changer de mode remplacera votre modèle actuel par le modèle par défaut. Que souhaitez-vous faire ?",
+    "template.save": "Enregistrer le modèle",
+    "template.import": "Importer le JSON",
+    "template.openFolder": "Ouvrir le dossier des profils",
+    "template.unsaved": "Modifications non enregistrées. Enregistrez ce modèle pour l'ajouter à vos profils.",
+    "template.profile.label": "Profil :",
+    "template.profile.editHint": "Charger ce profil dans l'éditeur",
+    "template.profile.generateHint": "Les profils cochés sont générés pour chaque tâche",
+    "template.profile.deleteHint": "Supprimer ce profil",
+    "template.save.title": "Enregistrer le profil de modèle",
+    "template.save.nameLabel": "Nom du profil :",
+    "template.save.confirm": "Enregistrer",
+    "template.save.errorEmpty": "Saisissez un nom de profil.",
+    "template.save.errorReserved": "Ce nom est réservé. Choisissez un autre nom.",
+    "template.overwrite.title": "Écraser le profil",
+    "template.overwrite.message": "Un profil nommé « {{name}} » existe déjà. L'écraser ?",
+    "template.delete.title": "Supprimer le profil",
+    "template.delete.message": "Supprimer le profil « {{name}} » ? Cette action est irréversible.",
+    "template.unsavedConfirm.title": "Modifications non enregistrées",
+    "template.unsavedConfirm.message": "Vous avez des modifications non enregistrées sur ce modèle. Les abandonner ?",
     "template.block.title": "Bloc de titre",
     "template.block.version": "Bloc de version",
     "template.block.depot_list": "Bloc de liste des dépôts",
@@ -703,7 +720,7 @@ const translations = {
     "template.field.depotLine": "Modèle de ligne de dépôt",
     "template.field.useCode": "Encadrer dans [code=text]",
     "template.help.chipHint": "Insérer :",
-    "template.help.crewOnly": "(défini uniquement en mode Crew)",
+    "template.help.crewOnly": "(défini via le paramètre Nom de l'uploader)",
     "template.help.field.game_name": "Le nom du jeu (p. ex. Balatro).",
     "template.help.field.os": "Le système d'exploitation téléchargé (p. ex. Windows x64).",
     "template.help.field.branch": "La branche Steam (p. ex. public).",
@@ -712,8 +729,7 @@ const translations = {
     "template.help.field.app_id": "Le numéro d'App ID Steam.",
     "template.help.field.game_description": "Le texte de description de la boutique du jeu.",
     "template.help.field.website": "L'URL du site officiel du jeu.",
-    "template.help.field.username": "Votre nom d'uploader depuis les paramètres Crew.",
-    "template.help.field.filehost": "L'hébergeur de fichiers depuis les paramètres Crew.",
+    "template.help.field.username": "Votre nom d'uploader depuis les Paramètres.",
     "template.help.field.depot_id": "L'identifiant numérique du dépôt.",
     "template.help.field.depot_name": "Le nom du dépôt.",
     "template.help.field.manifest_id": "Le numéro d'ID de manifeste du dépôt.",
@@ -722,10 +738,9 @@ const translations = {
     "template.action.remove": "Supprimer",
     "template.status.ready": "Modèle prêt.",
     "template.status.loaded": "Modèle chargé.",
-    "template.status.saved": "Modèle enregistré.",
-    "template.status.reset": "Modèle réinitialisé par défaut.",
-    "template.confirm.title": "Réinitialiser par défaut",
-    "template.confirm.save": "Enregistrer le modèle actuel en JSON avant de réinitialiser ?",
+    "template.status.saved": "Profil enregistré.",
+    "template.status.deleted": "Profil supprimé.",
+    "template.status.imported": "Profil importé.",
     "template.error.noMetadata": "Aucune métadonnée de tâche disponible. Exécutez une tâche pour prévisualiser.",
     "template.error.invalidField": "Champ(s) non pris en charge : {{fields}}",
     "template.error.depotLimit": "Le nombre de dépôts dépasse la limite de {{limit}}.",
@@ -734,6 +749,8 @@ const translations = {
     "template.error.invalidFile": "Fichier de modèle invalide.",
     "template.error.loadFailed": "Échec du chargement du modèle : {{error}}",
     "template.error.saveFailed": "Échec de l'enregistrement du modèle : {{error}}",
+    "template.error.deleteFailed": "Échec de la suppression du profil : {{error}}",
+    "template.error.openFolderFailed": "Échec de l'ouverture du dossier des profils : {{error}}",
     "template.preview.metaReady": "Utilisation des métadonnées de la dernière tâche terminée.",
     "template.preview.metaMissing": "L'aperçu nécessite une tâche terminée pour fournir des métadonnées.",
     "template.preview.metaDefault": "Utilisation de métadonnées d'exemple pour l'aperçu. Exécutez une tâche pour utiliser des données réelles.",
@@ -870,6 +887,8 @@ const translations = {
     "settings.splitArchiveHint":
       "Teilt die Ausgabe in mehrere Teile (archive.7z.001, .002, …) der gewählten Größe auf. Zum Zusammenfügen die .001-Datei entpacken.",
     "settings.defaultQrLogin": "Standardmäßig QR-Login verwenden",
+    "settings.uploaderName": "Uploader-Name:",
+    "settings.uploaderNameHint": "Wird für den {{username}}-Token in Vorlagen verwendet.",
     "settings.deleteLogin": "Gespeicherte Login-Daten löschen",
     "update.available": "OmniPacker v{{version}} ist verfügbar.",
     "update.download": "Herunterladen",
@@ -885,21 +904,25 @@ const translations = {
     "template.preview": "Live-Vorschau",
     "template.addBlock": "Block hinzufügen",
     "template.copy": "BBCode kopieren",
-    "template.save": "JSON speichern",
-    "template.load": "JSON laden",
-    "template.reset": "Auf Standard zurücksetzen",
-    "template.mode.toCrew": "Zu Crew-Modus wechseln",
-    "template.mode.toStandard": "Zu Standardmodus wechseln",
-    "template.crew.username": "Uploader-Name:",
-    "template.crew.filehost": "Dateihoster:",
-    "template.status.modeCrew": "Crew-Modus aktiviert.",
-    "template.status.modeStandard": "Standardmodus aktiviert.",
-    "template.modeConfirm.title": "Vorlagenmodus wechseln",
-    "template.modeConfirm.toCrew": "In den Crew-Modus wechseln? Dies ersetzt deine aktuelle Vorlage durch die Crew-Vorlage.",
-    "template.modeConfirm.toStandard": "In den Standardmodus wechseln? Dies ersetzt deine aktuelle Vorlage durch die Standardvorlage.",
-    "template.modeConfirm.save": "Speichern & wechseln",
-    "template.modeConfirm.replace": "Ersetzen",
-    "template.modeConfirm.message": "Beim Moduswechsel wird deine aktuelle Vorlage durch die Standardvorlage ersetzt. Was möchtest du tun?",
+    "template.save": "Vorlage speichern",
+    "template.import": "JSON importieren",
+    "template.openFolder": "Profilordner öffnen",
+    "template.unsaved": "Nicht gespeicherte Änderungen. Speichere diese Vorlage, um sie zu deinen Profilen hinzuzufügen.",
+    "template.profile.label": "Profil:",
+    "template.profile.editHint": "Dieses Profil in den Editor laden",
+    "template.profile.generateHint": "Angehakte Profile werden für jeden Job erzeugt",
+    "template.profile.deleteHint": "Dieses Profil löschen",
+    "template.save.title": "Vorlagenprofil speichern",
+    "template.save.nameLabel": "Profilname:",
+    "template.save.confirm": "Speichern",
+    "template.save.errorEmpty": "Gib einen Profilnamen ein.",
+    "template.save.errorReserved": "Dieser Name ist reserviert. Wähle einen anderen Namen.",
+    "template.overwrite.title": "Profil überschreiben",
+    "template.overwrite.message": "Ein Profil namens \"{{name}}\" existiert bereits. Überschreiben?",
+    "template.delete.title": "Profil löschen",
+    "template.delete.message": "Das Profil \"{{name}}\" löschen? Dies kann nicht rückgängig gemacht werden.",
+    "template.unsavedConfirm.title": "Nicht gespeicherte Änderungen",
+    "template.unsavedConfirm.message": "Du hast nicht gespeicherte Änderungen an dieser Vorlage. Verwerfen?",
     "template.block.title": "Titelblock",
     "template.block.version": "Versionsblock",
     "template.block.depot_list": "Depotlistenblock",
@@ -912,7 +935,7 @@ const translations = {
     "template.field.depotLine": "Depotzeilen-Vorlage",
     "template.field.useCode": "In [code=text] einschließen",
     "template.help.chipHint": "Einfügen:",
-    "template.help.crewOnly": "(nur im Crew-Modus gesetzt)",
+    "template.help.crewOnly": "(über die Einstellung Uploader-Name gesetzt)",
     "template.help.field.game_name": "Der Name des Spiels (z. B. Balatro).",
     "template.help.field.os": "Das heruntergeladene Betriebssystem (z. B. Windows x64).",
     "template.help.field.branch": "Der Steam-Branch (z. B. public).",
@@ -921,8 +944,7 @@ const translations = {
     "template.help.field.app_id": "Die Steam-App-ID-Nummer.",
     "template.help.field.game_description": "Der Shop-Beschreibungstext des Spiels.",
     "template.help.field.website": "Die offizielle Website-URL des Spiels.",
-    "template.help.field.username": "Dein Uploader-Name aus den Crew-Einstellungen.",
-    "template.help.field.filehost": "Der Filehost aus den Crew-Einstellungen.",
+    "template.help.field.username": "Dein Uploader-Name aus den Einstellungen.",
     "template.help.field.depot_id": "Die numerische Depot-ID.",
     "template.help.field.depot_name": "Der Name des Depots.",
     "template.help.field.manifest_id": "Die Manifest-ID-Nummer des Depots.",
@@ -931,10 +953,9 @@ const translations = {
     "template.action.remove": "Entfernen",
     "template.status.ready": "Vorlage bereit.",
     "template.status.loaded": "Vorlage geladen.",
-    "template.status.saved": "Vorlage gespeichert.",
-    "template.status.reset": "Vorlage auf Standard zurückgesetzt.",
-    "template.confirm.title": "Auf Standard zurücksetzen",
-    "template.confirm.save": "Aktuelle Vorlage vor dem Zurücksetzen als JSON speichern?",
+    "template.status.saved": "Profil gespeichert.",
+    "template.status.deleted": "Profil gelöscht.",
+    "template.status.imported": "Profil importiert.",
     "template.error.noMetadata": "Keine Job-Metadaten verfügbar. Starte einen Job für die Vorschau.",
     "template.error.invalidField": "Nicht unterstützte Felder: {{fields}}",
     "template.error.depotLimit": "Anzahl der Depots überschreitet das Limit von {{limit}}.",
@@ -943,6 +964,8 @@ const translations = {
     "template.error.invalidFile": "Ungültige Vorlagendatei.",
     "template.error.loadFailed": "Vorlage konnte nicht geladen werden: {{error}}",
     "template.error.saveFailed": "Vorlage konnte nicht gespeichert werden: {{error}}",
+    "template.error.deleteFailed": "Profil konnte nicht gelöscht werden: {{error}}",
+    "template.error.openFolderFailed": "Profilordner konnte nicht geöffnet werden: {{error}}",
     "template.preview.metaReady": "Verwendet Metadaten des zuletzt abgeschlossenen Jobs.",
     "template.preview.metaMissing": "Für die Vorschau wird ein abgeschlossener Job benötigt.",
     "template.preview.metaDefault": "Verwendet Beispielmetadaten für die Vorschau. Starte einen Job für echte Daten.",
@@ -1077,6 +1100,8 @@ const translations = {
     "settings.splitArchiveHint":
       "Разделяет вывод на несколько томов (archive.7z.001, .002, …) выбранного размера. Для сборки распакуйте файл .001.",
     "settings.defaultQrLogin": "QR-вход по умолчанию",
+    "settings.uploaderName": "Имя загрузившего:",
+    "settings.uploaderNameHint": "Используется для токена {{username}} в шаблонах.",
     "settings.deleteLogin": "Удалить сохраненные данные входа",
     "update.available": "Доступна версия OmniPacker v{{version}}.",
     "update.download": "Скачать",
@@ -1092,21 +1117,25 @@ const translations = {
     "template.preview": "Предпросмотр в реальном времени",
     "template.addBlock": "Добавить блок",
     "template.copy": "Копировать BBCode",
-    "template.save": "Сохранить JSON",
-    "template.load": "Загрузить JSON",
-    "template.reset": "Сбросить по умолчанию",
-    "template.mode.toCrew": "Переключить в режим Crew",
-    "template.mode.toStandard": "Переключить в стандартный режим",
-    "template.crew.username": "Имя загрузившего:",
-    "template.crew.filehost": "Файловый хостинг:",
-    "template.status.modeCrew": "Режим Crew включён.",
-    "template.status.modeStandard": "Стандартный режим включён.",
-    "template.modeConfirm.title": "Сменить режим шаблона",
-    "template.modeConfirm.toCrew": "Переключиться в режим Crew? Это заменит ваш текущий шаблон шаблоном Crew.",
-    "template.modeConfirm.toStandard": "Переключиться в стандартный режим? Это заменит ваш текущий шаблон стандартным шаблоном.",
-    "template.modeConfirm.save": "Сохранить и переключить",
-    "template.modeConfirm.replace": "Заменить",
-    "template.modeConfirm.message": "Смена режима заменит ваш текущий шаблон шаблоном по умолчанию. Что вы хотите сделать?",
+    "template.save": "Сохранить шаблон",
+    "template.import": "Импортировать JSON",
+    "template.openFolder": "Открыть папку профилей",
+    "template.unsaved": "Несохранённые изменения. Сохраните этот шаблон, чтобы добавить его в профили.",
+    "template.profile.label": "Профиль:",
+    "template.profile.editHint": "Загрузить этот профиль в редактор",
+    "template.profile.generateHint": "Отмеченные профили генерируются для каждого задания",
+    "template.profile.deleteHint": "Удалить этот профиль",
+    "template.save.title": "Сохранить профиль шаблона",
+    "template.save.nameLabel": "Имя профиля:",
+    "template.save.confirm": "Сохранить",
+    "template.save.errorEmpty": "Введите имя профиля.",
+    "template.save.errorReserved": "Это имя зарезервировано. Выберите другое имя.",
+    "template.overwrite.title": "Перезаписать профиль",
+    "template.overwrite.message": "Профиль с именем \"{{name}}\" уже существует. Перезаписать?",
+    "template.delete.title": "Удалить профиль",
+    "template.delete.message": "Удалить профиль \"{{name}}\"? Это действие нельзя отменить.",
+    "template.unsavedConfirm.title": "Несохранённые изменения",
+    "template.unsavedConfirm.message": "В этом шаблоне есть несохранённые изменения. Отменить их?",
     "template.block.title": "Блок заголовка",
     "template.block.version": "Блок версии",
     "template.block.depot_list": "Блок списка депо",
@@ -1119,7 +1148,7 @@ const translations = {
     "template.field.depotLine": "Шаблон строки депо",
     "template.field.useCode": "Обернуть в [code=text]",
     "template.help.chipHint": "Вставить:",
-    "template.help.crewOnly": "(задаётся только в режиме Crew)",
+    "template.help.crewOnly": "(задаётся в настройке «Имя загрузившего»)",
     "template.help.field.game_name": "Название игры (например, Balatro).",
     "template.help.field.os": "Операционная система, для которой вы скачали (например, Windows x64).",
     "template.help.field.branch": "Ветка Steam (например, public).",
@@ -1128,8 +1157,7 @@ const translations = {
     "template.help.field.app_id": "Числовой App ID в Steam.",
     "template.help.field.game_description": "Текст описания игры из магазина.",
     "template.help.field.website": "URL официального сайта игры.",
-    "template.help.field.username": "Ваше имя загрузчика из настроек Crew.",
-    "template.help.field.filehost": "Файловый хостинг из настроек Crew.",
+    "template.help.field.username": "Ваше имя загрузившего из настроек.",
     "template.help.field.depot_id": "Числовой ID депо.",
     "template.help.field.depot_name": "Название депо.",
     "template.help.field.manifest_id": "Числовой ID манифеста депо.",
@@ -1138,10 +1166,9 @@ const translations = {
     "template.action.remove": "Удалить",
     "template.status.ready": "Шаблон готов.",
     "template.status.loaded": "Шаблон загружен.",
-    "template.status.saved": "Шаблон сохранен.",
-    "template.status.reset": "Шаблон сброшен к настройкам по умолчанию.",
-    "template.confirm.title": "Сбросить по умолчанию",
-    "template.confirm.save": "Сохранить текущий шаблон в JSON перед сбросом?",
+    "template.status.saved": "Профиль сохранён.",
+    "template.status.deleted": "Профиль удалён.",
+    "template.status.imported": "Профиль импортирован.",
     "template.error.noMetadata": "Нет метаданных задания. Запустите задание для предпросмотра.",
     "template.error.invalidField": "Неподдерживаемые поля: {{fields}}",
     "template.error.depotLimit": "Количество депо превышает лимит {{limit}}.",
@@ -1150,6 +1177,8 @@ const translations = {
     "template.error.invalidFile": "Некорректный файл шаблона.",
     "template.error.loadFailed": "Не удалось загрузить шаблон: {{error}}",
     "template.error.saveFailed": "Не удалось сохранить шаблон: {{error}}",
+    "template.error.deleteFailed": "Не удалось удалить профиль: {{error}}",
+    "template.error.openFolderFailed": "Не удалось открыть папку профилей: {{error}}",
     "template.preview.metaReady": "Используются метаданные последнего завершенного задания.",
     "template.preview.metaMissing": "Для предпросмотра требуется завершенное задание.",
     "template.preview.metaDefault": "Используются примерные метаданные для предпросмотра. Запустите задание, чтобы использовать реальные данные.",
@@ -1248,19 +1277,18 @@ const TEMPLATE_SINGLE_FIELDS = [
   "branch",
   "build_datetime_utc",
   "build_id",
-  // Crew-mode tokens. app_id/game_description/website come from job metadata;
-  // username/filehost come from the crew settings in the template editor.
+  // app_id/game_description/website come from job metadata; username comes from
+  // the global "Uploader name" setting.
   "app_id",
   "game_description",
   "website",
   "username",
-  "filehost",
 ];
 const TEMPLATE_DEPOT_FIELDS = ["depot_id", "depot_name", "manifest_id"];
 
-// Fields whose value is only populated in Crew mode (see renderTemplateOutput).
-// In Standard mode their token renders blank; the chip tooltip notes this.
-const TEMPLATE_CREW_ONLY_FIELDS = new Set(["username", "filehost"]);
+// Fields sourced from settings rather than job metadata. `username` renders
+// blank when the "Uploader name" setting is empty; the chip tooltip notes this.
+const TEMPLATE_CREW_ONLY_FIELDS = new Set(["username"]);
 
 // i18n description key per token, shown as a chip tooltip so users know what a
 // token does without leaving the editor. Keyed by field name so the chip rows
@@ -1335,6 +1363,10 @@ const TEMPLATE_DEFAULTS = {
 const templateState = {
   blocks: [],
   metadata: null,
+  // Name of the profile currently loaded in the editor scratchpad.
+  editorProfileName: "standard",
+  // True when the scratchpad has unsaved edits relative to the loaded profile.
+  dirty: false,
 };
 
 let templateBlockSequence = 0;
@@ -1374,7 +1406,7 @@ const CREW_HEADER_FREETEXT =
   "[color=red][b]Download Links:[/b][/color]\n" +
   "[list][color=yellow][b]Mirror 1[/b][/color]\n" +
   "[url=][color=cyan]{{game_name}}[/color] | [color=#FF8000]#UploadDate#[/color][/url] " +
-  "({{filehost}}) [i]< uploaded by {{username}} >[/i][/list]\n\n\n" +
+  "[i]< uploaded by {{username}} >[/i][/list]\n\n\n" +
   "[color=red][b]{{game_name}}[/b][/color]";
 
 const createCrewTemplate = () => {
@@ -1383,42 +1415,96 @@ const createCrewTemplate = () => {
   return [header, createTemplateBlock("depot_list"), createTemplateBlock("uploaded_version")];
 };
 
-// Returns the default block list for the active template mode. The mode toggle
-// and Reset-to-Default both route through this.
-const createDefaultTemplate = () =>
-  settingsState.templateMode === "crew"
-    ? createCrewTemplate()
-    : createStandardTemplate();
+// Built-in profile names. These are synthesized here, never written to disk,
+// and cannot be overwritten or deleted (the backend rejects them too).
+const BUILTIN_PROFILE_NAMES = ["standard", "crew"];
 
-const loadDefaultTemplateFromSettings = () => {
-  if (!settingsState.defaultTemplate) {
-    return null;
+const isBuiltinProfileName = (name) =>
+  BUILTIN_PROFILE_NAMES.some(
+    (builtin) => builtin.toLowerCase() === String(name || "").trim().toLowerCase()
+  );
+
+// Display label for a profile. Built-ins are stored lowercase ("standard",
+// "crew") so they map to reserved names everywhere; capitalize them for display
+// only. Custom profiles keep their saved name as-is.
+const profileDisplayName = (name) => {
+  const value = String(name || "");
+  if (isBuiltinProfileName(value)) {
+    return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
   }
-  try {
-    return parseTemplatePayload(settingsState.defaultTemplate);
-  } catch (error) {
-    settingsState.defaultTemplate = null;
-    saveSettings();
-    return null;
-  }
+  return value;
 };
 
-const persistTemplateDefault = async () => {
-  if (templateState.blocks.length === 0) {
-    settingsState.defaultTemplate = null;
-  } else {
-    settingsState.defaultTemplate = serializeTemplate();
+// Mirrors the backend sanitize_filename: keeps alphanumerics, dash, underscore;
+// everything else becomes `_`; trims leading/trailing `_`; empty -> "profile".
+// Used so a profile name maps to the same on-disk file the backend writes.
+const sanitizeProfileFilename = (name) => {
+  const sanitized = String(name || "").replace(/[^A-Za-z0-9_-]/g, "_");
+  const trimmed = sanitized.replace(/^_+|_+$/g, "");
+  return trimmed || "profile";
+};
 
-    // Also save to Rust backend storage for template file generation
-    if (tauriInvoke) {
-      try {
-        await tauriInvoke("save_template_data", {
-          templatePayload: settingsState.defaultTemplate,
-        });
-      } catch (error) {
-        console.debug("[OmniPacker] Failed to save template to backend:", error);
+// Returns the built-in profile blocks for a given name (deep-cloned by the
+// builders), or null if the name isn't a built-in.
+const createBuiltinProfileBlocks = (name) => {
+  const key = String(name || "").trim().toLowerCase();
+  if (key === "standard") {
+    return createStandardTemplate();
+  }
+  if (key === "crew") {
+    return createCrewTemplate();
+  }
+  return null;
+};
+
+// The profile library: built-ins followed by saved custom profiles loaded from
+// disk. Each entry: { name, builtin, payload }.
+const profileState = {
+  profiles: [],
+};
+
+const getBuiltinProfiles = () =>
+  BUILTIN_PROFILE_NAMES.map((name) => ({
+    name,
+    builtin: true,
+    payload: serializeTemplateBlocks(createBuiltinProfileBlocks(name)),
+  }));
+
+const findProfile = (name) =>
+  profileState.profiles.find(
+    (profile) => profile.name.toLowerCase() === String(name || "").trim().toLowerCase()
+  ) || null;
+
+// Loads saved profiles from the backend and rebuilds the library (built-ins +
+// disk profiles). Falls back to built-ins only when the backend is unavailable.
+const refreshProfileLibrary = async () => {
+  let stored = [];
+  if (tauriInvoke) {
+    try {
+      const result = await tauriInvoke("list_profiles");
+      if (Array.isArray(result)) {
+        stored = result
+          .filter((entry) => entry && typeof entry.name === "string")
+          .map((entry) => ({
+            name: entry.name,
+            builtin: false,
+            payload: entry.payload,
+          }));
       }
+    } catch (error) {
+      console.debug("[OmniPacker] Failed to list profiles:", error);
     }
+  }
+  profileState.profiles = [...getBuiltinProfiles(), ...stored];
+
+  // Drop any generation selections whose profile no longer exists, but always
+  // keep at least "standard" selected so a job still produces a template.
+  const valid = new Set(profileState.profiles.map((p) => p.name));
+  settingsState.selectedProfiles = settingsState.selectedProfiles.filter((name) =>
+    valid.has(name)
+  );
+  if (settingsState.selectedProfiles.length === 0) {
+    settingsState.selectedProfiles = ["standard"];
   }
   saveSettings();
 };
@@ -1472,115 +1558,80 @@ const loadTemplateMetadata = async () => {
   syncTemplatePreviewMeta();
 };
 
-// Reflects the active template mode in the toggle button label and crew-only
-// inputs. Crew inputs are hidden (and irrelevant to rendering) in standard mode.
-const syncTemplateModeUI = () => {
-  const isCrew = settingsState.templateMode === "crew";
-  if (templateModeButton) {
-    templateModeButton.textContent = isCrew
-      ? t("template.mode.toStandard")
-      : t("template.mode.toCrew");
-  }
-  if (templateCrewSettings) {
-    templateCrewSettings.hidden = !isCrew;
-  }
-  if (crewUsernameInput) {
-    crewUsernameInput.value = settingsState.crewUsername || "";
-  }
-  if (crewFilehostInput) {
-    crewFilehostInput.value = settingsState.crewFilehost || "";
+// Marks the editor scratchpad as modified relative to the loaded profile and
+// reflects it in the unsaved notice. Edits are not persisted to disk until the
+// user explicitly saves a profile.
+const markScratchpadDirty = () => {
+  templateState.dirty = true;
+  syncUnsavedNotice();
+};
+
+const syncUnsavedNotice = () => {
+  if (templateUnsavedNotice) {
+    templateUnsavedNotice.hidden = !templateState.dirty;
   }
 };
 
-// Three-way confirm for switching template mode. Resolves to "save", "replace",
-// or "cancel". Switching replaces the current blocks with the target preset, so
-// we offer to save the existing template to JSON first.
-let templateModeConfirmResolve = null;
-
-const openTemplateModeConfirm = (targetMode) => {
-  const messageKey =
-    targetMode === "crew"
-      ? "template.modeConfirm.toCrew"
-      : "template.modeConfirm.toStandard";
-
-  if (!templateModeConfirmOverlay) {
-    // No modal available (e.g. tests): fall back to a confirm. OK = replace.
-    return Promise.resolve(window.confirm(t(messageKey)) ? "replace" : "cancel");
+// Loads a profile's blocks into the editor scratchpad and marks it clean.
+const loadProfileIntoEditor = (name) => {
+  const profile = findProfile(name);
+  let blocks;
+  if (profile) {
+    try {
+      blocks = parseTemplatePayload(profile.payload);
+    } catch (error) {
+      blocks = createBuiltinProfileBlocks("standard");
+    }
+  } else {
+    blocks = createBuiltinProfileBlocks("standard");
+    name = "standard";
   }
-  if (templateModeConfirmMessage) {
-    templateModeConfirmMessage.textContent = t(messageKey);
-  }
-  if (templateModeConfirmResolve) {
-    templateModeConfirmResolve("cancel");
-    templateModeConfirmResolve = null;
-  }
-  templateModeConfirmOverlay.classList.add("active");
-  return new Promise((resolve) => {
-    templateModeConfirmResolve = resolve;
-  });
-};
-
-const closeTemplateModeConfirm = (choice) => {
-  templateModeConfirmOverlay?.classList.remove("active");
-  if (templateModeConfirmResolve) {
-    templateModeConfirmResolve(choice);
-    templateModeConfirmResolve = null;
-  }
-};
-
-// Applies the mode switch: sets the mode, replaces the current blocks with the
-// target preset, and persists. Assumes the user already confirmed (and that any
-// "save" was handled by the caller).
-const applyTemplateModeSwitch = async (targetMode) => {
-  settingsState.templateMode = targetMode;
-  saveSettings();
-  templateState.blocks = createDefaultTemplate();
-  await persistTemplateDefault();
-  syncTemplateModeUI();
-  setTemplateStatus(
-    targetMode === "crew"
-      ? t("template.status.modeCrew")
-      : t("template.status.modeStandard")
-  );
+  templateState.blocks = blocks;
+  templateState.editorProfileName = profile ? profile.name : name;
+  templateState.dirty = false;
+  syncUnsavedNotice();
   renderTemplateBuilder();
   renderTemplatePreview();
+  renderProfileOptions();
+  updateProfileSummary();
 };
 
-// Prompts before flipping modes, since switching replaces the current template
-// with the target preset. Save & Switch exports the current template first;
-// Replace switches without saving; Cancel leaves everything untouched.
-const toggleTemplateMode = async () => {
-  const targetMode =
-    settingsState.templateMode === "crew" ? "standard" : "crew";
-  const choice = await openTemplateModeConfirm(targetMode);
-  if (choice === "cancel") {
-    return;
+// Guards a scratchpad-discarding action (switching the edited profile or
+// closing the editor) with a confirm when there are unsaved changes. Returns
+// true when it is safe to proceed.
+const confirmDiscardScratchpad = async () => {
+  if (!templateState.dirty) {
+    return true;
   }
-  if (choice === "save") {
-    await saveTemplateToFile();
-  }
-  await applyTemplateModeSwitch(targetMode);
+  return openGenericConfirm(
+    t("template.unsavedConfirm.title"),
+    t("template.unsavedConfirm.message")
+  );
 };
 
 const openTemplateEditor = async () => {
   templateModalOverlay?.classList.add("active");
-  syncTemplateModeUI();
-  await syncTemplateStorage();
-  if (templateState.blocks.length === 0) {
-    const storedBlocks = loadDefaultTemplateFromSettings();
-    templateState.blocks = storedBlocks || createDefaultTemplate();
-
-    // Sync template to backend storage on first load
-    await persistTemplateDefault();
-  }
+  await refreshProfileLibrary();
+  // Load the first selected profile (or standard) into the editor on open.
+  const initial =
+    settingsState.selectedProfiles.find((name) => findProfile(name)) ||
+    "standard";
+  loadProfileIntoEditor(initial);
   populateTemplateBlockSelect();
+  renderProfileOptions();
+  updateProfileSummary();
   setTemplateStatus(t("template.status.ready"));
   await loadTemplateMetadata();
   renderTemplateBuilder();
   renderTemplatePreview();
 };
 
-const closeTemplateEditor = () => {
+const closeTemplateEditor = async () => {
+  if (!(await confirmDiscardScratchpad())) {
+    return;
+  }
+  templateState.dirty = false;
+  syncUnsavedNotice();
   templateModalOverlay?.classList.remove("active");
 };
 
@@ -1595,7 +1646,7 @@ const moveTemplateBlock = (index, direction) => {
   }
   const [block] = templateState.blocks.splice(index, 1);
   templateState.blocks.splice(nextIndex, 0, block);
-  persistTemplateDefault();
+  markScratchpadDirty();
   renderTemplateBuilder();
   renderTemplatePreview();
 };
@@ -1605,7 +1656,7 @@ const removeTemplateBlock = (index) => {
     return;
   }
   templateState.blocks.splice(index, 1);
-  persistTemplateDefault();
+  markScratchpadDirty();
   renderTemplateBuilder();
   renderTemplatePreview();
 };
@@ -1616,7 +1667,7 @@ const updateTemplateBlockConfig = (blockId, updates) => {
     return;
   }
   target.config = { ...target.config, ...updates };
-  persistTemplateDefault();
+  markScratchpadDirty();
   renderTemplatePreview();
 };
 
@@ -1626,7 +1677,7 @@ const addTemplateBlock = (type) => {
     return;
   }
   templateState.blocks.push(createTemplateBlock(type));
-  persistTemplateDefault();
+  markScratchpadDirty();
   renderTemplateBuilder();
   renderTemplatePreview();
 };
@@ -1851,16 +1902,9 @@ const renderTemplateOutput = (blocks, metadata) => {
     app_id: metadata.app_id || "",
     game_description: metadata.game_description || "",
     website: metadata.website || "",
-    // Crew settings only apply in crew mode; empty (yielding blank tokens)
-    // otherwise so standard templates are unaffected.
-    username:
-      settingsState.templateMode === "crew"
-        ? settingsState.crewUsername || ""
-        : "",
-    filehost:
-      settingsState.templateMode === "crew"
-        ? settingsState.crewFilehost || ""
-        : "",
+    // The uploader handle comes from the global "Uploader name" setting and
+    // feeds {{username}}. Blank when unset.
+    username: settingsState.uploaderName || "",
   };
   const depots = Array.isArray(metadata.depots) ? metadata.depots : [];
   const outputParts = [];
@@ -2062,78 +2106,180 @@ const isValidTemplatePayload = (payload) => {
   }
 };
 
-const saveTemplateToFile = async () => {
-  const tauriDialog = window.__TAURI__?.dialog;
-  const tauriFsWriteText = window.__TAURI__?.fs?.writeTextFile;
+// Generic yes/no confirm backed by the template-generic-confirm modal. Resolves
+// true on Yes, false on No/dismiss. Falls back to window.confirm when the modal
+// isn't present (e.g. tests).
+let genericConfirmResolve = null;
 
-  if (!tauriDialog?.save || !tauriFsWriteText) {
-    // Fallback to browser download if Tauri dialog is unavailable
-    const payload = JSON.stringify(serializeTemplate(), null, 2);
-    const blob = new Blob([payload], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "omnipacker-template.json";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    setTemplateStatus(t("template.status.saved"));
-    return;
+const openGenericConfirm = (title, message) => {
+  if (!templateGenericConfirmOverlay) {
+    return Promise.resolve(window.confirm(message));
   }
+  if (templateGenericConfirmTitle) {
+    templateGenericConfirmTitle.textContent = title || "";
+  }
+  if (templateGenericConfirmMessage) {
+    templateGenericConfirmMessage.textContent = message || "";
+  }
+  if (genericConfirmResolve) {
+    genericConfirmResolve(false);
+    genericConfirmResolve = null;
+  }
+  templateGenericConfirmOverlay.classList.add("active");
+  return new Promise((resolve) => {
+    genericConfirmResolve = resolve;
+  });
+};
 
-  try {
-    const saveOptions = {
-      defaultPath: settingsState.lastTemplateSaveDir
-        ? `${settingsState.lastTemplateSaveDir}/omnipacker-template.json`
-        : "omnipacker-template.json",
-      filters: [{ name: "JSON", extensions: ["json"] }],
-    };
-
-    const filePath = await tauriDialog.save(saveOptions);
-    const resolvedPath =
-      typeof filePath === "string" ? filePath : filePath?.path || "";
-
-    if (!resolvedPath) {
-      // User cancelled the dialog
-      return;
-    }
-
-    const payload = JSON.stringify(serializeTemplate(), null, 2);
-
-    // Write file using Tauri's fs plugin API.
-    await tauriFsWriteText(resolvedPath, payload);
-
-    // Remember the directory for next time
-    const lastSlash = Math.max(
-      resolvedPath.lastIndexOf("/"),
-      resolvedPath.lastIndexOf("\\"),
-    );
-    if (lastSlash > 0) {
-      settingsState.lastTemplateSaveDir = resolvedPath.substring(0, lastSlash);
-      saveSettings();
-    }
-
-    setTemplateStatus(t("template.status.saved"));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    setTemplateStatus(t("template.error.saveFailed", { error: message }));
+const closeGenericConfirm = (result) => {
+  templateGenericConfirmOverlay?.classList.remove("active");
+  if (genericConfirmResolve) {
+    genericConfirmResolve(result);
+    genericConfirmResolve = null;
   }
 };
 
-const loadTemplateFromFile = (file) => {
+// Persists the current scratchpad blocks as a named profile via the backend,
+// then refreshes the library and selects the saved profile for editing.
+const persistProfile = async (name) => {
+  if (!tauriInvoke) {
+    setTemplateStatus(t("template.error.saveFailed", { error: "backend unavailable" }));
+    return false;
+  }
+  try {
+    const savedName = await tauriInvoke("save_profile", {
+      name,
+      templatePayload: serializeTemplate(),
+    });
+    await refreshProfileLibrary();
+    const canonical = typeof savedName === "string" && savedName ? savedName : name;
+    templateState.editorProfileName = canonical;
+    templateState.dirty = false;
+    syncUnsavedNotice();
+    // Newly saved profiles are auto-selected for generation.
+    if (!settingsState.selectedProfiles.includes(canonical)) {
+      settingsState.selectedProfiles.push(canonical);
+      saveSettings();
+    }
+    renderProfileOptions();
+    updateProfileSummary();
+    setTemplateStatus(t("template.status.saved"));
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setTemplateStatus(t("template.error.saveFailed", { error: message }));
+    return false;
+  }
+};
+
+// Opens the save-profile modal, pre-filling the current editor profile name
+// (unless it's a built-in, which can't be overwritten).
+const openSaveProfileModal = () => {
+  if (!templateSaveOverlay || !templateSaveNameInput) {
+    return;
+  }
+  const current = templateState.editorProfileName || "";
+  templateSaveNameInput.value = isBuiltinProfileName(current) ? "" : current;
+  if (templateSaveError) {
+    templateSaveError.textContent = "";
+  }
+  templateSaveOverlay.classList.add("active");
+  templateSaveNameInput.focus();
+  templateSaveNameInput.select();
+};
+
+const closeSaveProfileModal = () => {
+  templateSaveOverlay?.classList.remove("active");
+};
+
+// Validates the entered name and saves (prompting to overwrite when a custom
+// profile of the same name exists). Reserved built-in names are rejected.
+const confirmSaveProfile = async () => {
+  const name = (templateSaveNameInput?.value || "").trim();
+  if (!name) {
+    if (templateSaveError) {
+      templateSaveError.textContent = t("template.save.errorEmpty");
+    }
+    return;
+  }
+  if (isBuiltinProfileName(name)) {
+    if (templateSaveError) {
+      templateSaveError.textContent = t("template.save.errorReserved");
+    }
+    return;
+  }
+  if (findProfile(name)) {
+    const overwrite = await openGenericConfirm(
+      t("template.overwrite.title"),
+      t("template.overwrite.message", { name })
+    );
+    if (!overwrite) {
+      return;
+    }
+  }
+  const ok = await persistProfile(name);
+  if (ok) {
+    closeSaveProfileModal();
+  }
+};
+
+// Deletes a saved profile after confirmation. Built-ins cannot be deleted.
+const deleteProfile = async (name) => {
+  if (isBuiltinProfileName(name) || !tauriInvoke) {
+    return;
+  }
+  const confirmed = await openGenericConfirm(
+    t("template.delete.title"),
+    t("template.delete.message", { name })
+  );
+  if (!confirmed) {
+    return;
+  }
+  try {
+    await tauriInvoke("delete_profile", { name });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setTemplateStatus(t("template.error.deleteFailed", { error: message }));
+    return;
+  }
+  await refreshProfileLibrary();
+  // If the deleted profile was loaded in the editor, fall back to standard.
+  if (
+    templateState.editorProfileName.toLowerCase() === name.toLowerCase()
+  ) {
+    templateState.dirty = false;
+    loadProfileIntoEditor("standard");
+  }
+  renderProfileOptions();
+  updateProfileSummary();
+  setTemplateStatus(t("template.status.deleted"));
+};
+
+// Imports a shared profile JSON file into the library. Prompts for a name
+// (defaulting to the file's base name) and saves it like any custom profile.
+const importProfileFromFile = (file) => {
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
+    let blocks;
     try {
       const payload = JSON.parse(String(reader.result || ""));
-      templateState.blocks = parseTemplatePayload(payload);
-      persistTemplateDefault();
-      setTemplateStatus(t("template.status.loaded"));
-      renderTemplateBuilder();
-      renderTemplatePreview();
+      blocks = parseTemplatePayload(payload);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setTemplateStatus(t("template.error.loadFailed", { error: message }));
+      return;
+    }
+    // Load the imported blocks into the scratchpad and prompt to name/save.
+    templateState.blocks = blocks;
+    templateState.dirty = true;
+    syncUnsavedNotice();
+    renderTemplateBuilder();
+    renderTemplatePreview();
+    setTemplateStatus(t("template.status.imported"));
+    const baseName = (file.name || "imported").replace(/\.json$/i, "");
+    if (templateSaveNameInput) {
+      openSaveProfileModal();
+      templateSaveNameInput.value = isBuiltinProfileName(baseName) ? "" : baseName;
     }
   };
   reader.onerror = () => {
@@ -2144,43 +2290,16 @@ const loadTemplateFromFile = (file) => {
   reader.readAsText(file);
 };
 
-let templateConfirmResolve = null;
-
-const openTemplateResetConfirm = () => {
-  if (!templateConfirmOverlay) {
-    return Promise.resolve(window.confirm(t("template.confirm.save")));
+const openProfilesFolder = async () => {
+  if (!tauriInvoke) {
+    return;
   }
-  if (templateConfirmMessage) {
-    templateConfirmMessage.textContent = t("template.confirm.save");
+  try {
+    await tauriInvoke("open_profiles_folder");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setTemplateStatus(t("template.error.openFolderFailed", { error: message }));
   }
-  if (templateConfirmResolve) {
-    templateConfirmResolve(false);
-    templateConfirmResolve = null;
-  }
-  templateConfirmOverlay.classList.add("active");
-  return new Promise((resolve) => {
-    templateConfirmResolve = resolve;
-  });
-};
-
-const closeTemplateResetConfirm = (shouldSave) => {
-  templateConfirmOverlay?.classList.remove("active");
-  if (templateConfirmResolve) {
-    templateConfirmResolve(shouldSave);
-    templateConfirmResolve = null;
-  }
-};
-
-const resetTemplateToDefault = async () => {
-  const shouldSave = await openTemplateResetConfirm();
-  if (shouldSave) {
-    saveTemplateToFile();
-  }
-  templateState.blocks = createDefaultTemplate();
-  await persistTemplateDefault();
-  setTemplateStatus(t("template.status.reset"));
-  renderTemplateBuilder();
-  renderTemplatePreview();
 };
 
 const copyTemplatePreview = async () => {
@@ -2238,7 +2357,8 @@ const applyTranslations = () => {
   refreshQrModalText();
   if (templateModalOverlay?.classList.contains("active")) {
     populateTemplateBlockSelect();
-    syncTemplateModeUI();
+    renderProfileOptions();
+    updateProfileSummary();
     renderTemplateBuilder();
     syncTemplatePreviewMeta();
     renderTemplatePreview();
@@ -2285,23 +2405,17 @@ const loadSettings = () => {
       if (typeof parsed.language === "string") {
         settingsState.language = parsed.language;
       }
-      if (parsed.defaultTemplate && typeof parsed.defaultTemplate === "object") {
-        settingsState.defaultTemplate = parsed.defaultTemplate;
-      }
-      if (typeof parsed.lastTemplateSaveDir === "string") {
-        settingsState.lastTemplateSaveDir = parsed.lastTemplateSaveDir;
-      }
       if (typeof parsed.skippedUpdateVersion === "string") {
         settingsState.skippedUpdateVersion = parsed.skippedUpdateVersion;
       }
-      if (parsed.templateMode === "crew" || parsed.templateMode === "standard") {
-        settingsState.templateMode = parsed.templateMode;
+      if (typeof parsed.uploaderName === "string") {
+        settingsState.uploaderName = parsed.uploaderName;
       }
-      if (typeof parsed.crewUsername === "string") {
-        settingsState.crewUsername = parsed.crewUsername;
-      }
-      if (typeof parsed.crewFilehost === "string") {
-        settingsState.crewFilehost = parsed.crewFilehost;
+      if (
+        Array.isArray(parsed.selectedProfiles) &&
+        parsed.selectedProfiles.every((name) => typeof name === "string")
+      ) {
+        settingsState.selectedProfiles = parsed.selectedProfiles;
       }
     }
     if (
@@ -2416,6 +2530,9 @@ const applySettingsToUI = () => {
   }
   if (languageSelect) {
     languageSelect.value = settingsState.language;
+  }
+  if (uploaderNameInput) {
+    uploaderNameInput.value = settingsState.uploaderName || "";
   }
   syncCompressionPasswordUI();
   syncSplitArchiveUI();
@@ -3455,6 +3572,115 @@ if (branchDropdown) {
   updateBranchSummary();
 }
 
+// ── Profile dropdown ──────────────────────────────────────────────────────
+// Each row separates the two selection actions: the checkbox toggles whether a
+// profile is generated at job time (settingsState.selectedProfiles), while
+// clicking the name loads it into the editor scratchpad. Built-ins (standard,
+// crew) cannot be deleted, so they show no trash icon.
+// The collapsed dropdown button reflects the profile currently loaded in the
+// editor (updated on name-click load and on save), not the generation checkbox
+// selection — that lives in the expanded rows.
+const updateProfileSummary = () => {
+  const summary = getDropdownSummaryEl(profileDropdown);
+  if (!summary) {
+    return;
+  }
+  summary.textContent = templateState.editorProfileName
+    ? profileDisplayName(templateState.editorProfileName)
+    : t("dropdown.none");
+};
+
+const renderProfileOptions = () => {
+  if (!profileOptionsContainer) {
+    return;
+  }
+  profileOptionsContainer.textContent = "";
+
+  // Header clarifying that the checkboxes pick which profiles get generated for
+  // real job runs (distinct from clicking a name to edit it).
+  const header = document.createElement("div");
+  header.className = "profile-option-header";
+  header.textContent = t("template.profile.generateHint");
+  profileOptionsContainer.appendChild(header);
+
+  profileState.profiles.forEach((profile) => {
+    const row = document.createElement("div");
+    row.className = "profile-option";
+    if (
+      profile.name.toLowerCase() ===
+      String(templateState.editorProfileName || "").toLowerCase()
+    ) {
+      row.classList.add("is-editing");
+    }
+
+    const main = document.createElement("label");
+    main.className = "profile-option-main";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.title = t("template.profile.generateHint");
+    checkbox.checked = settingsState.selectedProfiles.includes(profile.name);
+    checkbox.addEventListener("change", () => {
+      const set = new Set(settingsState.selectedProfiles);
+      if (checkbox.checked) {
+        set.add(profile.name);
+      } else {
+        set.delete(profile.name);
+      }
+      settingsState.selectedProfiles = profileState.profiles
+        .map((p) => p.name)
+        .filter((name) => set.has(name));
+      saveSettings();
+      updateProfileSummary();
+    });
+    main.appendChild(checkbox);
+
+    const name = document.createElement("button");
+    name.type = "button";
+    name.className = "profile-option-name";
+    name.textContent = profileDisplayName(profile.name);
+    name.title = t("template.profile.editHint");
+    name.addEventListener("click", async () => {
+      if (
+        profile.name.toLowerCase() ===
+        String(templateState.editorProfileName || "").toLowerCase()
+      ) {
+        return;
+      }
+      if (!(await confirmDiscardScratchpad())) {
+        return;
+      }
+      loadProfileIntoEditor(profile.name);
+      setTemplateStatus(t("template.status.loaded"));
+    });
+    main.appendChild(name);
+    row.appendChild(main);
+
+    if (!profile.builtin) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "profile-option-remove";
+      remove.textContent = "🗑";
+      remove.title = t("template.profile.deleteHint");
+      remove.addEventListener("click", (event) => {
+        event.stopPropagation();
+        void deleteProfile(profile.name);
+      });
+      row.appendChild(remove);
+    }
+
+    profileOptionsContainer.appendChild(row);
+  });
+};
+
+if (profileDropdown) {
+  const button = getDropdownButton(profileDropdown);
+  if (button) {
+    button.addEventListener("click", () => toggleDropdown(profileDropdown));
+  }
+  updateProfileSummary();
+}
+
 // Close dropdowns when clicking outside of them.
 document.addEventListener("click", (event) => {
   if (osDropdown && !osDropdown.contains(event.target)) {
@@ -3463,46 +3689,13 @@ document.addEventListener("click", (event) => {
   if (branchDropdown && !branchDropdown.contains(event.target)) {
     closeDropdown(branchDropdown);
   }
+  if (profileDropdown && !profileDropdown.contains(event.target)) {
+    closeDropdown(profileDropdown);
+  }
 });
 
 const tauriEvent = window.__TAURI__?.event;
 const tauriInvoke = window.__TAURI__?.core?.invoke;
-
-const syncTemplateStorage = async () => {
-  if (!tauriInvoke) {
-    return;
-  }
-
-  let backendPayload = null;
-  try {
-    backendPayload = await tauriInvoke("load_template_data");
-  } catch (error) {
-    console.debug("[OmniPacker] Failed to load backend template:", error);
-  }
-
-  const localPayload = settingsState.defaultTemplate;
-  const localValid = isValidTemplatePayload(localPayload);
-  const backendValid = isValidTemplatePayload(backendPayload);
-
-  if (!localValid && backendValid) {
-    settingsState.defaultTemplate = backendPayload;
-    saveSettings();
-    return;
-  }
-
-  let payloadToSave = localValid ? localPayload : null;
-  if (!payloadToSave) {
-    payloadToSave = serializeTemplateBlocks(createDefaultTemplate());
-    settingsState.defaultTemplate = payloadToSave;
-    saveSettings();
-  }
-
-  try {
-    await tauriInvoke("save_template_data", { templatePayload: payloadToSave });
-  } catch (error) {
-    console.debug("[OmniPacker] Failed to save template to backend:", error);
-  }
-};
 
 const warnOrphanEvent = (eventName, payload) => {
   console.debug(
@@ -3690,13 +3883,34 @@ const buildJobMetadata = (job) => ({
   compressionPassword: settingsState.compressionPassword,
   customCompressionArgs: settingsState.customCompressionArgs,
   splitVolumeSize: resolveSplitVolumeSize(),
-  // Crew tokens only flow to the generated file when crew mode is active; empty
-  // otherwise so standard jobs render identically.
-  crewUsername:
-    settingsState.templateMode === "crew" ? settingsState.crewUsername : "",
-  crewFilehost:
-    settingsState.templateMode === "crew" ? settingsState.crewFilehost : "",
+  // Global uploader handle, fed into the {{username}} token.
+  uploaderName: settingsState.uploaderName || "",
+  // Resolved profiles selected for generation. Each yields its own .txt.
+  templateProfiles: resolveSelectedProfilesForGeneration(),
 });
+
+// Resolves the names in settingsState.selectedProfiles into { name, blocks }
+// payloads for the backend, expanding built-ins from their presets. Unknown
+// names are skipped; an empty result lets the backend fall back to the default.
+const resolveSelectedProfilesForGeneration = () =>
+  settingsState.selectedProfiles
+    .map((name) => {
+      const profile = findProfile(name);
+      if (!profile) {
+        return null;
+      }
+      let blocks;
+      try {
+        blocks = parseTemplatePayload(profile.payload);
+      } catch (error) {
+        return null;
+      }
+      return {
+        name: profile.name,
+        blocks: serializeTemplateBlocks(blocks).blocks,
+      };
+    })
+    .filter((entry) => entry !== null);
 
 const startJob = async () => {
   if (jobState.runningJobId) {
@@ -3745,8 +3959,6 @@ const startJob = async () => {
     renderAll();
     return;
   }
-
-  await syncTemplateStorage();
 
   try {
     const jobMetadata = buildJobMetadata(jobToRun);
@@ -4269,7 +4481,7 @@ if (templateLoadInput) {
   templateLoadInput.addEventListener("change", () => {
     const file = templateLoadInput.files?.[0];
     if (file) {
-      loadTemplateFromFile(file);
+      importProfileFromFile(file);
     }
     templateLoadInput.value = "";
   });
@@ -4277,80 +4489,72 @@ if (templateLoadInput) {
 
 if (templateSaveButton) {
   templateSaveButton.addEventListener("click", () => {
-    saveTemplateToFile();
+    openSaveProfileModal();
   });
 }
 
-if (templateResetButton) {
-  templateResetButton.addEventListener("click", () => {
-    void resetTemplateToDefault();
+if (templateOpenFolderButton) {
+  templateOpenFolderButton.addEventListener("click", () => {
+    void openProfilesFolder();
   });
 }
 
-if (templateModeButton) {
-  templateModeButton.addEventListener("click", () => {
-    void toggleTemplateMode();
+if (templateSaveConfirmButton) {
+  templateSaveConfirmButton.addEventListener("click", () => {
+    void confirmSaveProfile();
   });
 }
 
-if (templateModeConfirmSaveButton) {
-  templateModeConfirmSaveButton.addEventListener("click", () => {
-    closeTemplateModeConfirm("save");
+if (templateSaveCancelButton) {
+  templateSaveCancelButton.addEventListener("click", () => {
+    closeSaveProfileModal();
   });
 }
 
-if (templateModeConfirmReplaceButton) {
-  templateModeConfirmReplaceButton.addEventListener("click", () => {
-    closeTemplateModeConfirm("replace");
-  });
-}
-
-if (templateModeConfirmCancelButton) {
-  templateModeConfirmCancelButton.addEventListener("click", () => {
-    closeTemplateModeConfirm("cancel");
-  });
-}
-
-if (templateModeConfirmOverlay) {
-  templateModeConfirmOverlay.addEventListener("click", (event) => {
-    if (event.target === templateModeConfirmOverlay) {
-      closeTemplateModeConfirm("cancel");
+if (templateSaveNameInput) {
+  templateSaveNameInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void confirmSaveProfile();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeSaveProfileModal();
     }
   });
 }
 
-if (crewUsernameInput) {
-  crewUsernameInput.addEventListener("input", () => {
-    settingsState.crewUsername = crewUsernameInput.value;
+if (templateSaveOverlay) {
+  templateSaveOverlay.addEventListener("click", (event) => {
+    if (event.target === templateSaveOverlay) {
+      closeSaveProfileModal();
+    }
+  });
+}
+
+if (uploaderNameInput) {
+  uploaderNameInput.addEventListener("input", () => {
+    settingsState.uploaderName = uploaderNameInput.value;
     saveSettings();
     renderTemplatePreview();
   });
 }
 
-if (crewFilehostInput) {
-  crewFilehostInput.addEventListener("input", () => {
-    settingsState.crewFilehost = crewFilehostInput.value;
-    saveSettings();
-    renderTemplatePreview();
+if (templateGenericConfirmYes) {
+  templateGenericConfirmYes.addEventListener("click", () => {
+    closeGenericConfirm(true);
   });
 }
 
-if (templateConfirmYesButton) {
-  templateConfirmYesButton.addEventListener("click", () => {
-    closeTemplateResetConfirm(true);
+if (templateGenericConfirmNo) {
+  templateGenericConfirmNo.addEventListener("click", () => {
+    closeGenericConfirm(false);
   });
 }
 
-if (templateConfirmNoButton) {
-  templateConfirmNoButton.addEventListener("click", () => {
-    closeTemplateResetConfirm(false);
-  });
-}
-
-if (templateConfirmOverlay) {
-  templateConfirmOverlay.addEventListener("click", (event) => {
-    if (event.target === templateConfirmOverlay) {
-      closeTemplateResetConfirm(false);
+if (templateGenericConfirmOverlay) {
+  templateGenericConfirmOverlay.addEventListener("click", (event) => {
+    if (event.target === templateGenericConfirmOverlay) {
+      closeGenericConfirm(false);
     }
   });
 }
@@ -4560,9 +4764,11 @@ if (checkUpdateButton) {
 
 // Load settings from localStorage on startup
 loadSettings();
-void syncTemplateStorage();
 applySettingsToUI();
 applyDefaultQrLogin();
+// Seed the profile library so jobs started without opening the editor can still
+// resolve their selected profiles (built-ins + saved custom profiles).
+void refreshProfileLibrary();
 void loadSavedLoginDetails();
 
 // Scale the fixed-size UI to fit the window, preserving proportions.

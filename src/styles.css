@@ -857,22 +857,23 @@ html[lang="de"] .add-to-queue {
   padding: 12px;
 }
 
-.template-confirm-modal {
+.template-save-modal {
   width: min(420px, 92vw);
   height: auto;
 }
 
-.template-confirm-message {
-  font-size: 13px;
-  line-height: 1.4;
+.template-save-error {
+  min-height: 16px;
+  font-size: 12px;
+  color: #d9534f;
 }
 
-.template-mode-confirm-modal {
-  width: min(460px, 92vw);
+.template-generic-confirm-modal {
+  width: min(440px, 92vw);
   height: auto;
 }
 
-.template-mode-confirm-message {
+.template-generic-confirm-message {
   font-size: 13px;
   line-height: 1.4;
 }
@@ -906,27 +907,95 @@ html[lang="de"] .add-to-queue {
   gap: 8px;
 }
 
-.template-crew-settings {
+.template-profile-bar {
   display: flex;
-  gap: 12px;
-  padding: 8px;
-  background: #1a191a;
-  border: 1px solid #505050;
+  align-items: center;
+  gap: 8px;
 }
 
-.template-crew-settings .settings-group {
-  flex: 1;
-}
-
-.template-crew-settings input {
-  padding: 6px 8px;
-  background: #1a191a;
-  border: 1px solid #505050;
-  color: #e6e6e6;
+.template-profile-label {
+  font-weight: 600;
   font-size: 13px;
 }
 
-.template-crew-settings[hidden] {
+.template-profile-dropdown {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-option-header {
+  padding: 6px 8px 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9a9a9a;
+  border-bottom: 1px solid #444;
+}
+
+.profile-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+}
+
+.profile-option:hover {
+  background: #3a393a;
+}
+
+.profile-option.is-editing {
+  background: #2f3a2f;
+}
+
+.profile-option-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.profile-option-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  color: #e6e6e6;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-option-name:hover {
+  text-decoration: underline;
+}
+
+.profile-option-remove {
+  background: none;
+  border: none;
+  color: #b56a6a;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.profile-option-remove:hover {
+  color: #d9534f;
+}
+
+.template-unsaved-notice {
+  font-size: 12px;
+  color: #c7b56a;
+  font-style: italic;
+}
+
+.template-unsaved-notice[hidden] {
   display: none;
 }
 

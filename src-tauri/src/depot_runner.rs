@@ -23,8 +23,7 @@ use crate::manifest_preflight::{build_preflight_args, parse_preflight_output};
 use crate::steam_api::fetch_app_info;
 use crate::steamdb_api::fetch_build_date;
 use crate::template_metadata::{TemplateMetadata, TemplateMetadataState};
-use crate::template_renderer::write_template_file;
-use crate::template_store::load_template_data_internal;
+use crate::template_renderer::{write_template_files, TemplateProfile};
 use crate::zip_runner::{
     calculate_7z_compression_args, filter_custom_args, run_7zip_blocking, SevenZipOutcome,
     SevenZipRunnerState,
@@ -62,13 +61,15 @@ pub struct JobMetadata {
     /// 7-Zip emit `archive.7z.001`, `.002`, … instead of a single file.
     #[serde(default)]
     pub split_volume_size: String,
-    /// Crew-mode uploader handle. Only populated when the template editor is in
-    /// crew mode; empty otherwise. Injected into the `{{username}}` token.
+    /// Global uploader handle (from the "Uploader name" setting). Injected into
+    /// the `{{username}}` token for any profile that uses it. Empty when unset.
     #[serde(default)]
-    pub crew_username: String,
-    /// Crew-mode file host label. Injected into the `{{filehost}}` token.
+    pub uploader_name: String,
+    /// Template profiles selected for generation, resolved by the frontend
+    /// (built-in `standard`/`crew` plus any saved custom ones). Each yields its
+    /// own `.txt` next to the output. Empty falls back to the default template.
     #[serde(default)]
-    pub crew_filehost: String,
+    pub template_profiles: Vec<TemplateProfile>,
 }
 
 /// Internal state tracking the running job
@@ -1143,9 +1144,8 @@ fn run_depotdownloader_worker(
                             JobMetadataFile::read_from_dir(&staging_dir_for_monitor)
                         {
                             let mut template_metadata = TemplateMetadata::from_job_metadata(&metadata);
-                            template_metadata.set_crew_fields(
-                                job_for_monitor.crew_username.clone(),
-                                job_for_monitor.crew_filehost.clone(),
+                            template_metadata.set_uploader(
+                                job_for_monitor.uploader_name.clone(),
                             );
                             app_handle_clone
                                 .state::<TemplateMetadataState>()
@@ -1271,13 +1271,13 @@ fn run_depotdownloader_worker(
                                 &job_id_for_monitor,
                             );
 
-                            // Load user's template (or use default)
-                            let template_blocks = load_template_data_internal(&app_handle_clone)
-                                .map(|payload| payload.blocks);
-
-                            let template_blocks_ref = template_blocks.as_ref().map(|v| v.as_slice());
-
-                            match write_template_file(&final_output_path, &template_metadata, template_blocks_ref) {
+                            // Render one .txt per profile the frontend selected.
+                            // An empty list falls back to the default template.
+                            match write_template_files(
+                                &final_output_path,
+                                &template_metadata,
+                                &job_for_monitor.template_profiles,
+                            ) {
                                 Ok(()) => {
                                     emit_log(
                                         &app_handle_clone,
