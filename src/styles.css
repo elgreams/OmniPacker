@@ -615,6 +615,34 @@ html[lang="de"] .add-to-queue {
   z-index: 1000;
 }
 
+/* When the UI is scaled below 1x the body becomes a positioned, scaled box.
+   Anchor overlays to that box (absolute) instead of the viewport (fixed) so
+   they inherit the same --ui-scale transform as the rest of the app. */
+body.fixed-layout .modal-overlay {
+  position: absolute;
+}
+
+/* Modal widths/heights use vw/vh, which always reference the physical
+   viewport — not the scaled logical box. While scaled, that double-shrinks the
+   modal (vw cap + transform) and crops its content. Drop the viewport cap so
+   modals size in design-space pixels and scale uniformly like the main UI. */
+body.fixed-layout .template-modal {
+  width: 980px;
+  height: 640px;
+}
+
+body.fixed-layout .template-save-modal {
+  width: 420px;
+}
+
+body.fixed-layout .template-generic-confirm-modal {
+  width: 440px;
+}
+
+body.fixed-layout .output-conflict-modal {
+  width: 520px;
+}
+
 .modal-overlay.active {
   display: flex;
 }
