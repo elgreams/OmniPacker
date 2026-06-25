@@ -793,6 +793,15 @@ body.fixed-layout .output-conflict-modal {
   flex: 1;
 }
 
+.settings-date-format {
+  display: none;
+  padding-left: 22px;
+}
+
+.settings-date-format.active {
+  display: flex;
+}
+
 .settings-hint {
   font-size: 11px;
   color: #999;

@@ -69,6 +69,10 @@ const templateUnsavedNotice = document.querySelector(".template-unsaved-notice")
 const profileDropdown = document.getElementById("profile-dropdown");
 const profileOptionsContainer = document.querySelector(".template-profile-panel");
 const uploaderNameInput = document.getElementById("uploader-name-input");
+const uploadDateInput = document.getElementById("upload-date-input");
+const uploadDateTodayToggle = document.getElementById("upload-date-today-toggle");
+const uploadDateFormatRow = document.getElementById("upload-date-format-row");
+const uploadDateFormatSelect = document.getElementById("upload-date-format-select");
 const templateLoadInput = document.querySelector(".template-load-input");
 const templateCopyButton = document.querySelector(".template-copy-button");
 const templatePreviewOutput = document.querySelector(".template-preview-output");
@@ -123,6 +127,14 @@ const settingsState = {
   // Global uploader handle, inserted into the {{username}} token by any profile
   // (built-in crew or custom) that references it.
   uploaderName: "",
+  // Upload date fed into the {{upload_date}} token. When `uploadDateUseToday`
+  // is on, today's date (formatted per `uploadDateFormat`) overrides the manual
+  // text; otherwise the literal `uploadDate` text is used verbatim.
+  uploadDate: "",
+  uploadDateUseToday: false,
+  // Date format used when `uploadDateUseToday` is on. One of "long" (Month DD,
+  // YYYY), "iso" (YYYY-MM-DD), or "dmy" (DD/MM/YYYY).
+  uploadDateFormat: "long",
   // Names of the template profiles selected for generation. Built-in "standard"
   // and "crew" are always available; custom profiles live on disk. Each selected
   // profile produces its own .txt next to a job's output.
@@ -246,6 +258,13 @@ const translations = {
     "settings.defaultQrLogin": "Default to QR Login",
     "settings.uploaderName": "Uploader name:",
     "settings.uploaderNameHint": "Used for the {{username}} token in templates.",
+    "settings.uploadDate": "Upload date:",
+    "settings.uploadDateHint": "Used for the {{upload_date}} token in templates.",
+    "settings.uploadDateToday": "Use today's date",
+    "settings.uploadDateFormatLong": "Month DD, YYYY",
+    "settings.uploadDateFormatIso": "YYYY-MM-DD",
+    "settings.uploadDateFormatDmy": "DD/MM/YYYY",
+    "settings.uploadDateFormatMdy": "MM/DD/YYYY",
     "settings.deleteLogin": "Delete Saved Login Data",
     "update.available": "OmniPacker v{{version}} is available.",
     "update.download": "Download",
@@ -302,6 +321,7 @@ const translations = {
     "template.help.field.game_description": "The game's store description text.",
     "template.help.field.website": "The game's official website URL.",
     "template.help.field.username": "Your uploader name from Settings.",
+    "template.help.field.upload_date": "The upload date from Settings.",
     "template.help.field.depot_id": "The depot's numeric ID.",
     "template.help.field.depot_name": "The depot's name.",
     "template.help.field.manifest_id": "The depot's manifest ID number.",
@@ -459,6 +479,13 @@ const translations = {
     "settings.defaultQrLogin": "Usar QR de forma predeterminada",
     "settings.uploaderName": "Nombre del autor:",
     "settings.uploaderNameHint": "Se usa para el token {{username}} en las plantillas.",
+    "settings.uploadDate": "Fecha de subida:",
+    "settings.uploadDateHint": "Se usa para el token {{upload_date}} en las plantillas.",
+    "settings.uploadDateToday": "Usar la fecha de hoy",
+    "settings.uploadDateFormatLong": "Mes DD, AAAA",
+    "settings.uploadDateFormatIso": "AAAA-MM-DD",
+    "settings.uploadDateFormatDmy": "DD/MM/AAAA",
+    "settings.uploadDateFormatMdy": "MM/DD/AAAA",
     "settings.deleteLogin": "Eliminar datos de inicio de sesión guardados",
     "update.available": "OmniPacker v{{version}} ya está disponible.",
     "update.download": "Descargar",
@@ -515,6 +542,7 @@ const translations = {
     "template.help.field.game_description": "El texto de descripción de la tienda del juego.",
     "template.help.field.website": "La URL del sitio web oficial del juego.",
     "template.help.field.username": "Tu nombre de uploader desde Ajustes.",
+    "template.help.field.upload_date": "La fecha de subida desde Ajustes.",
     "template.help.field.depot_id": "El ID numérico del depósito.",
     "template.help.field.depot_name": "El nombre del depósito.",
     "template.help.field.manifest_id": "El número de ID de manifiesto del depósito.",
@@ -674,6 +702,13 @@ const translations = {
     "settings.defaultQrLogin": "Utiliser QR par défaut",
     "settings.uploaderName": "Nom de l'uploader :",
     "settings.uploaderNameHint": "Utilisé pour le jeton {{username}} dans les modèles.",
+    "settings.uploadDate": "Date d'envoi :",
+    "settings.uploadDateHint": "Utilisé pour le jeton {{upload_date}} dans les modèles.",
+    "settings.uploadDateToday": "Utiliser la date du jour",
+    "settings.uploadDateFormatLong": "Mois JJ, AAAA",
+    "settings.uploadDateFormatIso": "AAAA-MM-JJ",
+    "settings.uploadDateFormatDmy": "JJ/MM/AAAA",
+    "settings.uploadDateFormatMdy": "MM/JJ/AAAA",
     "settings.deleteLogin": "Supprimer les identifiants enregistrés",
     "update.available": "OmniPacker v{{version}} est disponible.",
     "update.download": "Télécharger",
@@ -730,6 +765,7 @@ const translations = {
     "template.help.field.game_description": "Le texte de description de la boutique du jeu.",
     "template.help.field.website": "L'URL du site officiel du jeu.",
     "template.help.field.username": "Votre nom d'uploader depuis les Paramètres.",
+    "template.help.field.upload_date": "La date d'envoi depuis les Paramètres.",
     "template.help.field.depot_id": "L'identifiant numérique du dépôt.",
     "template.help.field.depot_name": "Le nom du dépôt.",
     "template.help.field.manifest_id": "Le numéro d'ID de manifeste du dépôt.",
@@ -889,6 +925,13 @@ const translations = {
     "settings.defaultQrLogin": "Standardmäßig QR-Login verwenden",
     "settings.uploaderName": "Uploader-Name:",
     "settings.uploaderNameHint": "Wird für den {{username}}-Token in Vorlagen verwendet.",
+    "settings.uploadDate": "Upload-Datum:",
+    "settings.uploadDateHint": "Wird für den {{upload_date}}-Token in Vorlagen verwendet.",
+    "settings.uploadDateToday": "Heutiges Datum verwenden",
+    "settings.uploadDateFormatLong": "Monat TT, JJJJ",
+    "settings.uploadDateFormatIso": "JJJJ-MM-TT",
+    "settings.uploadDateFormatDmy": "TT.MM.JJJJ",
+    "settings.uploadDateFormatMdy": "MM/TT/JJJJ",
     "settings.deleteLogin": "Gespeicherte Login-Daten löschen",
     "update.available": "OmniPacker v{{version}} ist verfügbar.",
     "update.download": "Herunterladen",
@@ -945,6 +988,7 @@ const translations = {
     "template.help.field.game_description": "Der Shop-Beschreibungstext des Spiels.",
     "template.help.field.website": "Die offizielle Website-URL des Spiels.",
     "template.help.field.username": "Dein Uploader-Name aus den Einstellungen.",
+    "template.help.field.upload_date": "Das Upload-Datum aus den Einstellungen.",
     "template.help.field.depot_id": "Die numerische Depot-ID.",
     "template.help.field.depot_name": "Der Name des Depots.",
     "template.help.field.manifest_id": "Die Manifest-ID-Nummer des Depots.",
@@ -1102,6 +1146,13 @@ const translations = {
     "settings.defaultQrLogin": "QR-вход по умолчанию",
     "settings.uploaderName": "Имя загрузившего:",
     "settings.uploaderNameHint": "Используется для токена {{username}} в шаблонах.",
+    "settings.uploadDate": "Дата загрузки:",
+    "settings.uploadDateHint": "Используется для токена {{upload_date}} в шаблонах.",
+    "settings.uploadDateToday": "Использовать сегодняшнюю дату",
+    "settings.uploadDateFormatLong": "Месяц ДД, ГГГГ",
+    "settings.uploadDateFormatIso": "ГГГГ-ММ-ДД",
+    "settings.uploadDateFormatDmy": "ДД.ММ.ГГГГ",
+    "settings.uploadDateFormatMdy": "ММ/ДД/ГГГГ",
     "settings.deleteLogin": "Удалить сохраненные данные входа",
     "update.available": "Доступна версия OmniPacker v{{version}}.",
     "update.download": "Скачать",
@@ -1158,6 +1209,7 @@ const translations = {
     "template.help.field.game_description": "Текст описания игры из магазина.",
     "template.help.field.website": "URL официального сайта игры.",
     "template.help.field.username": "Ваше имя загрузившего из настроек.",
+    "template.help.field.upload_date": "Дата загрузки из настроек.",
     "template.help.field.depot_id": "Числовой ID депо.",
     "template.help.field.depot_name": "Название депо.",
     "template.help.field.manifest_id": "Числовой ID манифеста депо.",
@@ -1283,12 +1335,13 @@ const TEMPLATE_SINGLE_FIELDS = [
   "game_description",
   "website",
   "username",
+  "upload_date",
 ];
 const TEMPLATE_DEPOT_FIELDS = ["depot_id", "depot_name", "manifest_id"];
 
 // Fields sourced from settings rather than job metadata. `username` renders
 // blank when the "Uploader name" setting is empty; the chip tooltip notes this.
-const TEMPLATE_CREW_ONLY_FIELDS = new Set(["username"]);
+const TEMPLATE_CREW_ONLY_FIELDS = new Set(["username", "upload_date"]);
 
 // i18n description key per token, shown as a chip tooltip so users know what a
 // token does without leaving the editor. Keyed by field name so the chip rows
@@ -1392,8 +1445,8 @@ const createStandardTemplate = () => [
   createTemplateBlock("uploaded_version"),
 ];
 
-// Store-header body for the crew preset. `#UploadDate#` is an intentional
-// literal placeholder the user edits by hand after uploading. Kept in sync with
+// Store-header body for the crew preset. `{{upload_date}}` is fed by the global
+// "Upload date" setting (manual text or today's date). Kept in sync with
 // CREW_HEADER_FREETEXT in template_renderer.rs.
 const CREW_HEADER_FREETEXT =
   "[img]https://steamcdn-a.akamaihd.net/steam/apps/{{app_id}}/header.jpg[/img]\n\n\n" +
@@ -1405,7 +1458,7 @@ const CREW_HEADER_FREETEXT =
   "[url]{{website}}[/url]\n\n" +
   "[color=red][b]Download Links:[/b][/color]\n" +
   "[list][color=yellow][b]Mirror 1[/b][/color]\n" +
-  "[url=][color=cyan]{{game_name}}[/color] | [color=#FF8000]#UploadDate#[/color][/url] " +
+  "[url=][color=cyan]{{game_name}}[/color] | [color=#FF8000]{{upload_date}}[/color][/url] " +
   "[i]< uploaded by {{username}} >[/i][/list]\n\n\n" +
   "[color=red][b]{{game_name}}[/b][/color]";
 
@@ -1905,6 +1958,9 @@ const renderTemplateOutput = (blocks, metadata) => {
     // The uploader handle comes from the global "Uploader name" setting and
     // feeds {{username}}. Blank when unset.
     username: settingsState.uploaderName || "",
+    // The upload date comes from the global "Upload date" setting (manual text
+    // or today's date) and feeds {{upload_date}}. Blank when unset.
+    upload_date: resolveUploadDate(),
   };
   const depots = Array.isArray(metadata.depots) ? metadata.depots : [];
   const outputParts = [];
@@ -2411,6 +2467,20 @@ const loadSettings = () => {
       if (typeof parsed.uploaderName === "string") {
         settingsState.uploaderName = parsed.uploaderName;
       }
+      if (typeof parsed.uploadDate === "string") {
+        settingsState.uploadDate = parsed.uploadDate;
+      }
+      if (typeof parsed.uploadDateUseToday === "boolean") {
+        settingsState.uploadDateUseToday = parsed.uploadDateUseToday;
+      }
+      if (
+        parsed.uploadDateFormat === "long" ||
+        parsed.uploadDateFormat === "iso" ||
+        parsed.uploadDateFormat === "dmy" ||
+        parsed.uploadDateFormat === "mdy"
+      ) {
+        settingsState.uploadDateFormat = parsed.uploadDateFormat;
+      }
       if (
         Array.isArray(parsed.selectedProfiles) &&
         parsed.selectedProfiles.every((name) => typeof name === "string")
@@ -2461,6 +2531,49 @@ const resolveSplitVolumeSize = () => {
     return `${value}${unit}`;
   }
   return settingsState.splitSizePreset;
+};
+
+// Formats a Date per one of the supported upload-date formats.
+const formatUploadDate = (date, format) => {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const pad = (n) => String(n).padStart(2, "0");
+  if (format === "iso") {
+    return `${year}-${pad(month)}-${pad(day)}`;
+  }
+  if (format === "dmy") {
+    return `${pad(day)}/${pad(month)}/${year}`;
+  }
+  if (format === "mdy") {
+    return `${pad(month)}/${pad(day)}/${year}`;
+  }
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  return `${monthNames[date.getMonth()]} ${day}, ${year}`;
+};
+
+// Resolves the {{upload_date}} value. When "use today" is on, returns today's
+// date in the chosen format; otherwise the manually typed text (blank if unset).
+const resolveUploadDate = () => {
+  if (settingsState.uploadDateUseToday) {
+    return formatUploadDate(new Date(), settingsState.uploadDateFormat);
+  }
+  return settingsState.uploadDate || "";
+};
+
+const syncUploadDateUI = () => {
+  if (uploadDateInput) {
+    uploadDateInput.disabled = settingsState.uploadDateUseToday;
+  }
+  if (uploadDateFormatRow) {
+    uploadDateFormatRow.classList.toggle(
+      "active",
+      settingsState.uploadDateUseToday
+    );
+  }
 };
 
 const syncSplitArchiveUI = () => {
@@ -2534,8 +2647,18 @@ const applySettingsToUI = () => {
   if (uploaderNameInput) {
     uploaderNameInput.value = settingsState.uploaderName || "";
   }
+  if (uploadDateInput) {
+    uploadDateInput.value = settingsState.uploadDate || "";
+  }
+  if (uploadDateTodayToggle) {
+    uploadDateTodayToggle.checked = settingsState.uploadDateUseToday;
+  }
+  if (uploadDateFormatSelect) {
+    uploadDateFormatSelect.value = settingsState.uploadDateFormat;
+  }
   syncCompressionPasswordUI();
   syncSplitArchiveUI();
+  syncUploadDateUI();
   applyTranslations();
 };
 
@@ -3885,6 +4008,8 @@ const buildJobMetadata = (job) => ({
   splitVolumeSize: resolveSplitVolumeSize(),
   // Global uploader handle, fed into the {{username}} token.
   uploaderName: settingsState.uploaderName || "",
+  // Resolved upload date (manual text or today's date), fed into {{upload_date}}.
+  uploadDate: resolveUploadDate(),
   // Resolved profiles selected for generation. Each yields its own .txt.
   templateProfiles: resolveSelectedProfilesForGeneration(),
 });
@@ -4534,6 +4659,31 @@ if (templateSaveOverlay) {
 if (uploaderNameInput) {
   uploaderNameInput.addEventListener("input", () => {
     settingsState.uploaderName = uploaderNameInput.value;
+    saveSettings();
+    renderTemplatePreview();
+  });
+}
+
+if (uploadDateInput) {
+  uploadDateInput.addEventListener("input", () => {
+    settingsState.uploadDate = uploadDateInput.value;
+    saveSettings();
+    renderTemplatePreview();
+  });
+}
+
+if (uploadDateTodayToggle) {
+  uploadDateTodayToggle.addEventListener("change", () => {
+    settingsState.uploadDateUseToday = uploadDateTodayToggle.checked;
+    saveSettings();
+    syncUploadDateUI();
+    renderTemplatePreview();
+  });
+}
+
+if (uploadDateFormatSelect) {
+  uploadDateFormatSelect.addEventListener("change", () => {
+    settingsState.uploadDateFormat = uploadDateFormatSelect.value;
     saveSettings();
     renderTemplatePreview();
   });

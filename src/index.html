@@ -285,6 +285,28 @@
           </div>
 
           <div class="settings-group">
+            <label class="settings-label" for="upload-date-input" data-i18n="settings.uploadDate">
+              Upload date:
+            </label>
+            <input id="upload-date-input" type="text" />
+            <label class="settings-checkbox-row">
+              <input id="upload-date-today-toggle" type="checkbox" />
+              <span data-i18n="settings.uploadDateToday">Use today's date</span>
+            </label>
+            <div class="settings-date-format" id="upload-date-format-row">
+              <select id="upload-date-format-select" class="settings-select">
+                <option value="long" data-i18n="settings.uploadDateFormatLong">Month DD, YYYY</option>
+                <option value="iso" data-i18n="settings.uploadDateFormatIso">YYYY-MM-DD</option>
+                <option value="dmy" data-i18n="settings.uploadDateFormatDmy">DD/MM/YYYY</option>
+                <option value="mdy" data-i18n="settings.uploadDateFormatMdy">MM/DD/YYYY</option>
+              </select>
+            </div>
+            <span class="settings-hint" data-i18n="settings.uploadDateHint">
+              Used for the {{upload_date}} token in templates.
+            </span>
+          </div>
+
+          <div class="settings-group">
             <button type="button" class="settings-delete-login-button" data-i18n="settings.deleteLogin">
               Delete Saved Login Data
             </button>

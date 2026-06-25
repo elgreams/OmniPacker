@@ -29,6 +29,10 @@ pub struct TemplateMetadata {
     /// job.json, so it is populated separately after construction (empty by
     /// default). Feeds the `{{username}}` token.
     pub username: String,
+    /// Upload date. Sourced from the global "Upload date" setting (manual text
+    /// or today's date), not job.json, so it is populated separately after
+    /// construction (empty by default). Feeds the `{{upload_date}}` token.
+    pub upload_date: String,
     pub depots: Vec<TemplateDepot>,
 }
 
@@ -71,6 +75,9 @@ impl TemplateMetadata {
             // The uploader handle is injected later via set_uploader; default to
             // empty so the `{{username}}` token renders blank when unset.
             username: String::new(),
+            // The upload date is injected later via set_upload_date; default to
+            // empty so the `{{upload_date}}` token renders blank when unset.
+            upload_date: String::new(),
             depots,
         }
     }
@@ -79,6 +86,12 @@ impl TemplateMetadata {
     /// which originates from the frontend rather than job.json.
     pub fn set_uploader(&mut self, username: String) {
         self.username = username;
+    }
+
+    /// Applies the global upload date (from the "Upload date" setting), which
+    /// originates from the frontend rather than job.json.
+    pub fn set_upload_date(&mut self, upload_date: String) {
+        self.upload_date = upload_date;
     }
 }
 

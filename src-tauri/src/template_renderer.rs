@@ -122,6 +122,7 @@ pub fn render_template(
     base_values.insert("game_description".to_string(), metadata.game_description.clone());
     base_values.insert("website".to_string(), metadata.website.clone());
     base_values.insert("username".to_string(), metadata.username.clone());
+    base_values.insert("upload_date".to_string(), metadata.upload_date.clone());
 
     for block in blocks {
         let part = match block {
@@ -266,9 +267,9 @@ pub fn create_crew_template() -> Vec<TemplateBlock> {
     ]
 }
 
-/// Store-header FreeText body for the crew preset. `#UploadDate#` is an
-/// intentional literal placeholder the user edits by hand after uploading.
-const CREW_HEADER_FREETEXT: &str = "[img]https://steamcdn-a.akamaihd.net/steam/apps/{{app_id}}/header.jpg[/img]\n\n\n[color=red][b]About This Game:[/b][/color]\n[img]https://steamstore-a.akamaihd.net/public/images/v6/maincol_gradient_rule.png[/img]\n{{game_description}}\n\n[color=red][b]Official Site:[/b][/color]\n[url]https://store.steampowered.com/app/{{app_id}}/[/url]\n[url]{{website}}[/url]\n\n[color=red][b]Download Links:[/b][/color]\n[list][color=yellow][b]Mirror 1[/b][/color]\n[url=][color=cyan]{{game_name}}[/color] | [color=#FF8000]#UploadDate#[/color][/url] [i]< uploaded by {{username}} >[/i][/list]\n\n\n[color=red][b]{{game_name}}[/b][/color]";
+/// Store-header FreeText body for the crew preset. `{{upload_date}}` is fed by
+/// the global "Upload date" setting (manual text or today's date).
+const CREW_HEADER_FREETEXT: &str = "[img]https://steamcdn-a.akamaihd.net/steam/apps/{{app_id}}/header.jpg[/img]\n\n\n[color=red][b]About This Game:[/b][/color]\n[img]https://steamstore-a.akamaihd.net/public/images/v6/maincol_gradient_rule.png[/img]\n{{game_description}}\n\n[color=red][b]Official Site:[/b][/color]\n[url]https://store.steampowered.com/app/{{app_id}}/[/url]\n[url]{{website}}[/url]\n\n[color=red][b]Download Links:[/b][/color]\n[list][color=yellow][b]Mirror 1[/b][/color]\n[url=][color=cyan]{{game_name}}[/color] | [color=#FF8000]{{upload_date}}[/color][/url] [i]< uploaded by {{username}} >[/i][/list]\n\n\n[color=red][b]{{game_name}}[/b][/color]";
 
 /// Derives the sibling `.txt` path for the template alongside an output.
 ///
@@ -384,6 +385,7 @@ mod tests {
             game_description: "A roguelike deckbuilder.".to_string(),
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
+            upload_date: String::new(),
             depots: vec![
                 TemplateDepot {
                     depot_id: "2923300".to_string(),
@@ -427,6 +429,7 @@ mod tests {
             game_description: "A roguelike deckbuilder.".to_string(),
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
+            upload_date: String::new(),
             depots: vec![TemplateDepot {
                 depot_id: "2379781".to_string(),
                 depot_name: "Balatro".to_string(),
@@ -434,6 +437,7 @@ mod tests {
             }],
         };
         metadata.set_uploader("packer".to_string());
+        metadata.set_upload_date("June 25, 2026".to_string());
 
         let rendered = render_template(&create_crew_template(), &metadata).unwrap();
         // Crew tokens resolve.
@@ -441,8 +445,9 @@ mod tests {
         assert!(rendered.contains("A roguelike deckbuilder."));
         assert!(rendered.contains("https://www.playbalatro.com"));
         assert!(rendered.contains("uploaded by packer"));
-        // The hand-edited upload-date placeholder is preserved verbatim.
-        assert!(rendered.contains("#UploadDate#"));
+        // The upload-date token resolves from the global setting.
+        assert!(rendered.contains("June 25, 2026"));
+        assert!(!rendered.contains("{{upload_date}}"));
         // Depot list still renders.
         assert!(rendered.contains("4851806656204679952"));
     }
@@ -459,6 +464,7 @@ mod tests {
             game_description: "A roguelike deckbuilder.".to_string(),
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
+            upload_date: String::new(),
             depots: vec![],
         };
 
@@ -484,6 +490,7 @@ mod tests {
             game_description: "A roguelike deckbuilder.".to_string(),
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
+            upload_date: String::new(),
             depots: vec![TemplateDepot {
                 depot_id: "2923300".to_string(),
                 depot_name: "Balatro Content".to_string(),
@@ -559,6 +566,7 @@ mod tests {
             game_description: "A roguelike deckbuilder.".to_string(),
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
+            upload_date: String::new(),
             depots: vec![TemplateDepot {
                 depot_id: "2923300".to_string(),
                 depot_name: "Balatro Content".to_string(),

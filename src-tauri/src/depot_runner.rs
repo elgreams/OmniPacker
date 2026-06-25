@@ -65,6 +65,11 @@ pub struct JobMetadata {
     /// the `{{username}}` token for any profile that uses it. Empty when unset.
     #[serde(default)]
     pub uploader_name: String,
+    /// Global upload date (from the "Upload date" setting), resolved by the
+    /// frontend to either manual text or today's date. Injected into the
+    /// `{{upload_date}}` token for any profile that uses it. Empty when unset.
+    #[serde(default)]
+    pub upload_date: String,
     /// Template profiles selected for generation, resolved by the frontend
     /// (built-in `standard`/`crew` plus any saved custom ones). Each yields its
     /// own `.txt` next to the output. Empty falls back to the default template.
@@ -1146,6 +1151,9 @@ fn run_depotdownloader_worker(
                             let mut template_metadata = TemplateMetadata::from_job_metadata(&metadata);
                             template_metadata.set_uploader(
                                 job_for_monitor.uploader_name.clone(),
+                            );
+                            template_metadata.set_upload_date(
+                                job_for_monitor.upload_date.clone(),
                             );
                             app_handle_clone
                                 .state::<TemplateMetadataState>()
