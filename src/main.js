@@ -1367,7 +1367,7 @@ const TEMPLATE_DEFAULT_METADATA = {
   depots: [
     {
       depot_id: "228989",
-      depot_name: "Steamworks Shared",
+      depot_name: "Steamworks Common Redistributables",
       manifest_id: "7206221393165260579",
     },
     {

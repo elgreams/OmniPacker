@@ -400,19 +400,8 @@ fn derive_metadata_from_download(
         }
     }
 
-    use crate::steam_api::get_depot_name;
-    for depot in &mut depots {
-        // Priority 1: Use depot name from preflight if available
-        if let Some(name) = preflight_depot_names.get(&depot.depot_id) {
-            depot.depot_name = name.clone();
-        } else {
-            // Priority 2: Use naming strategy (primary depot or shared depot)
-            let is_primary = depot.depot_id == primary_depot_id;
-            depot.depot_name = get_depot_name(&depot.depot_id, is_primary, &game_name);
-        }
-    }
-
-    // Enrich depots with their dlcappid.
+    // Enrich depots with their dlcappid BEFORE naming, since DLC depots are named
+    // after their DLC app.
     // Primary source: parsed from DepotDownloader stdout (authoritative, from Steam PICS data).
     // Fallback: api.steamcmd.net (community-run mirror).
     for depot in &mut depots {
@@ -430,6 +419,85 @@ fn derive_metadata_from_download(
                 }
             }
         }
+    }
+
+    // Resolve depot display names. The goal is that a depot is named after a real
+    // app as much as possible; a bare `depot_<id>` is a genuine last resort.
+    //
+    // Priority:
+    //   1. Primary depot          -> the game's own name
+    //   2. Shared/redist depot     -> the OWNER app's real name (e.g. 228989/228990
+    //      -> "Steamworks Common Redistributables"). Detected data-drivenly via
+    //      appinfo `sharedinstall`/`depotfromapp`, with the hardcoded
+    //      `is_shared_depot` list as an offline fallback.
+    //   3. DLC depot (has dlcappid) -> that DLC app's real name
+    //   4. Parsed name from DepotDownloader stdout -- but ONLY when it is not just
+    //      the app's own name echoed onto a non-primary depot (that echo is what
+    //      mislabeled the redist depots as the game name).
+    //   5. `depot_<id>` -- last resort, when no app/name signal exists at all.
+    //
+    // All network lookups are cached and best-effort: a failure silently degrades
+    // to the next-lower-priority source and never fails the job.
+    use crate::steam_api::{get_shared_depot_owner, is_shared_depot};
+
+    // Data-driven shared-depot ownership from appinfo, unioned with the hardcoded
+    // list so known redists still resolve offline.
+    let shared_owners = crate::steamcmd_api::fetch_shared_depots(&job.app_id);
+
+    // Resolve (and cache locally) an owner/DLC app's real name.
+    let mut app_name_cache: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
+    let mut resolve_app_name = |owner_appid: &str| -> Option<String> {
+        if let Some(cached) = app_name_cache.get(owner_appid) {
+            return cached.clone();
+        }
+        let name = crate::steamcmd_api::fetch_app_name(owner_appid);
+        app_name_cache.insert(owner_appid.to_string(), name.clone());
+        name
+    };
+
+    for depot in &mut depots {
+        let depot_id = depot.depot_id.clone();
+        let is_primary = depot_id == primary_depot_id;
+
+        // 1. Primary depot is the game itself.
+        if is_primary {
+            depot.depot_name = game_name.clone();
+            continue;
+        }
+
+        // 2. Shared/redist depot -> owner app's real name.
+        let shared_owner = shared_owners
+            .get(&depot_id)
+            .cloned()
+            .or_else(|| is_shared_depot(&depot_id).then(|| get_shared_depot_owner(&depot_id).to_string()));
+        if let Some(owner) = shared_owner {
+            if let Some(name) = resolve_app_name(&owner) {
+                depot.depot_name = name;
+                continue;
+            }
+        }
+
+        // 3. DLC depot -> that DLC's real name.
+        if let Some(dlcappid) = depot.dlcappid.as_deref() {
+            if let Some(name) = resolve_app_name(dlcappid) {
+                depot.depot_name = name;
+                continue;
+            }
+        }
+
+        // 4. Parsed stdout name, unless it's just the app's own name echoed onto a
+        //    non-primary depot (the redist mislabel) -- in that case skip it so we
+        //    fall through to a better source or the numeric last resort.
+        if let Some(name) = preflight_depot_names.get(&depot_id) {
+            if name != &game_name {
+                depot.depot_name = name.clone();
+                continue;
+            }
+        }
+
+        // 5. Last resort.
+        depot.depot_name = format!("depot_{}", depot_id);
     }
 
     // Normalize branch name (capitalize first letter)

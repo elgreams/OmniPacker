@@ -67,22 +67,6 @@ pub fn is_shared_depot(depot_id: &str) -> bool {
         )
 }
 
-/// Gets a human-readable name for a shared Steam depot
-fn get_shared_depot_name(depot_id: &str) -> Option<String> {
-    // All redistributables live in the single "Steamworks Shared" folder,
-    // matching real Steam's on-disk layout.
-    if depot_id == "228980" || REDIST_DEPOTS.contains(&depot_id) {
-        return Some("Steamworks Shared".to_string());
-    }
-    match depot_id {
-        // Steam Linux Runtime
-        "1391110" => Some("SteamLinuxRuntime".to_string()),
-        "1628210" => Some("SteamLinuxRuntime_soldier".to_string()),
-        "1826330" => Some("SteamLinuxRuntime_sniper".to_string()),
-        _ => None,
-    }
-}
-
 /// Returns the owner appid for a shared depot
 ///
 /// In Steam's .acf format, shared depots are listed in a `SharedDepots` section
@@ -100,27 +84,6 @@ pub fn get_shared_depot_owner(depot_id: &str) -> &'static str {
         // Default to Steamworks Common Redistributables app
         _ => "228980",
     }
-}
-
-/// Gets a human-readable name for a depot
-///
-/// Strategy:
-/// 1. If it's the primary depot, use the game name
-/// 2. If it's a common Steam shared depot, use the known name
-/// 3. Otherwise, use depot_{id} fallback
-pub fn get_depot_name(depot_id: &str, is_primary: bool, game_name: &str) -> String {
-    // If it's the primary depot, use the game name
-    if is_primary {
-        return game_name.to_string();
-    }
-
-    // Check if it's a known shared depot
-    if let Some(name) = get_shared_depot_name(depot_id) {
-        return name;
-    }
-
-    // Otherwise, use fallback
-    format!("depot_{}", depot_id)
 }
 
 /// Fetches app info from Steam's public store API

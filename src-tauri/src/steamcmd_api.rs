@@ -101,6 +101,84 @@ pub fn fetch_depot_dlcappids(appid: &str) -> HashMap<String, String> {
     result
 }
 
+/// Returns a map of depot_id → owner appid for every depot in `appid` that is a
+/// shared install (`sharedinstall` == "1").
+///
+/// Steam marks redistributables and other cross-app depots with `sharedinstall`
+/// and a `depotfromapp` pointing at the app that actually owns the depot (e.g.
+/// the VC++/DirectX redists point at 228980, "Steamworks Common
+/// Redistributables"). This is the authoritative, data-driven way to recognize a
+/// shared depot regardless of whether it appears in any hardcoded list. When
+/// `depotfromapp` is absent, the entry is still returned with `appid` itself as a
+/// best-effort owner. On any failure this returns an empty map, so callers
+/// transparently degrade to the hardcoded `is_shared_depot` list.
+pub fn fetch_shared_depots(appid: &str) -> HashMap<String, String> {
+    let app_data = match fetch_appinfo(appid) {
+        Ok(data) => data,
+        Err(err) => {
+            debug_eprintln!("[STEAMCMD] shared-depot lookup unavailable for {}: {}", appid, err);
+            return HashMap::new();
+        }
+    };
+
+    parse_shared_depots(&app_data, appid)
+}
+
+/// Pure parser behind [`fetch_shared_depots`]: extracts depot_id → owner appid for
+/// every `sharedinstall == "1"` depot, defaulting the owner to `appid` when
+/// `depotfromapp` is absent. Split out so it can be unit-tested without the network.
+fn parse_shared_depots(app_data: &Value, appid: &str) -> HashMap<String, String> {
+    let mut result = HashMap::new();
+
+    let Some(depots) = app_data.get("depots").and_then(|d| d.as_object()) else {
+        return result;
+    };
+
+    for (depot_id, depot) in depots {
+        if !depot_id.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let is_shared = depot
+            .get("sharedinstall")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "1")
+            .unwrap_or(false);
+        if !is_shared {
+            continue;
+        }
+        let owner = depot
+            .get("depotfromapp")
+            .and_then(|v| v.as_str())
+            .unwrap_or(appid)
+            .to_string();
+        result.insert(depot_id.clone(), owner);
+    }
+
+    result
+}
+
+/// Returns the human-readable `common.name` for an app, if available.
+///
+/// Used to name shared/redistributable and DLC depots after the app that owns
+/// them (e.g. 228980 → "Steamworks Common Redistributables"). Returns `None` on
+/// any failure; callers fall back to other naming strategies.
+pub fn fetch_app_name(appid: &str) -> Option<String> {
+    let app_data = match fetch_appinfo(appid) {
+        Ok(data) => data,
+        Err(err) => {
+            debug_eprintln!("[STEAMCMD] app-name lookup unavailable for {}: {}", appid, err);
+            return None;
+        }
+    };
+
+    app_data
+        .get("common")
+        .and_then(|c| c.get("name"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// Returns the public-branch buildid for an app, if available.
 ///
 /// Used to populate the redistributables manifest (228980) with the same buildid
@@ -225,5 +303,65 @@ mod tests {
             .and_then(|p| p.get("buildid"))
             .and_then(|v| v.as_str());
         assert_eq!(buildid, Some("1510068"));
+    }
+
+    /// Appinfo matching The Crust (appid 1465470): one real game depot plus two
+    /// redist depots flagged `sharedinstall` and owned by 228980.
+    fn the_crust_appinfo() -> Value {
+        serde_json::json!({
+            "common": { "name": "The Crust" },
+            "config": { "installdir": "The Crust" },
+            "depots": {
+                "1465471": { "config": { "oslist": "windows" } },
+                "228989": {
+                    "config": { "oslist": "windows" },
+                    "depotfromapp": "228980",
+                    "sharedinstall": "1"
+                },
+                "228990": {
+                    "config": { "oslist": "windows" },
+                    "depotfromapp": "228980",
+                    "sharedinstall": "1"
+                },
+                "branches": { "public": { "buildid": "23867425" } }
+            }
+        })
+    }
+
+    #[test]
+    fn test_parse_shared_depots_flags_redists() {
+        let data = the_crust_appinfo();
+        let map = parse_shared_depots(&data, "1465470");
+
+        // Both redist depots are recognized as shared and owned by 228980.
+        assert_eq!(map.get("228989"), Some(&"228980".to_string()));
+        assert_eq!(map.get("228990"), Some(&"228980".to_string()));
+        // The real game depot is NOT shared.
+        assert!(!map.contains_key("1465471"));
+        // "branches" is not a depot.
+        assert!(!map.contains_key("branches"));
+        assert_eq!(map.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_shared_depots_defaults_owner_to_self() {
+        // A shared depot with no explicit depotfromapp falls back to the app itself.
+        let data = serde_json::json!({
+            "depots": {
+                "999": { "sharedinstall": "1" }
+            }
+        });
+        let map = parse_shared_depots(&data, "555");
+        assert_eq!(map.get("999"), Some(&"555".to_string()));
+    }
+
+    #[test]
+    fn test_parse_app_name() {
+        let data = the_crust_appinfo();
+        let name = data
+            .get("common")
+            .and_then(|c| c.get("name"))
+            .and_then(|v| v.as_str());
+        assert_eq!(name, Some("The Crust"));
     }
 }
