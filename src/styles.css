@@ -50,7 +50,23 @@ main.app {
   background: #1d1c1c;
   color: #e6e6e6;
   display: grid;
-  grid-template-rows: auto 1fr;
+  /* Three explicit rows: update banner, tab bar, tab content. The banner's
+     row collapses to 0 when it is hidden, so the no-banner case is unchanged.
+     Pinning each child to its row stops the banner from pushing the tab bar
+     into the 1fr (content) row, which stretched the tab buttons full-height. */
+  grid-template-rows: auto auto 1fr;
+}
+
+.update-banner {
+  grid-row: 1;
+}
+
+.tab-bar {
+  grid-row: 2;
+}
+
+.tab-content {
+  grid-row: 3;
 }
 
 input,

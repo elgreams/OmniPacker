@@ -4694,6 +4694,18 @@ const hideUpdateBanner = () => {
   }
 };
 
+// Debug helper: toggle the update banner from the devtools console without a
+// real update being available, e.g. `__omniDebug.forceUpdateBanner(true)`.
+// Used to reproduce banner-related layout bugs.
+window.__omniDebug = window.__omniDebug || {};
+window.__omniDebug.forceUpdateBanner = (show = true) => {
+  if (show) {
+    showUpdateBanner({ latest: "DEBUG", update_available: true });
+  } else {
+    hideUpdateBanner();
+  }
+};
+
 // Runs the backend check. `silent` (startup) swallows everything and only shows
 // the banner when an update is available and not skipped. Non-silent (manual
 // settings button) also reports "up to date" / failure in the settings hint.
