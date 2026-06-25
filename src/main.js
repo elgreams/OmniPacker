@@ -1343,6 +1343,21 @@ const TEMPLATE_DEPOT_FIELDS = ["depot_id", "depot_name", "manifest_id"];
 // blank when the "Uploader name" setting is empty; the chip tooltip notes this.
 const TEMPLATE_CREW_ONLY_FIELDS = new Set(["username", "upload_date"]);
 
+// Whether a crew-only field currently resolves to a value from Settings. Drives
+// the chip's "unset" (dashed/dimmed) styling: the chip looks unfilled only while
+// its backing setting is empty, and flips to the normal solid style once a value
+// is entered. Non-crew fields are always considered populated.
+const isCrewFieldPopulated = (field) => {
+  switch (field) {
+    case "username":
+      return (settingsState.uploaderName || "").trim() !== "";
+    case "upload_date":
+      return resolveUploadDate().trim() !== "";
+    default:
+      return true;
+  }
+};
+
 // i18n description key per token, shown as a chip tooltip so users know what a
 // token does without leaving the editor. Keyed by field name so the chip rows
 // (built by iterating the field arrays above) can never drift from the engine.
@@ -1768,7 +1783,9 @@ const appendTemplateChipRow = (parentEl, input, blockId, configKey, fields) => {
     chip.className = "template-chip";
     chip.textContent = `{{${field}}}`;
     const crewOnly = TEMPLATE_CREW_ONLY_FIELDS.has(field);
-    if (crewOnly) {
+    // Only show the "unset" (dashed/dimmed) treatment while the backing setting
+    // is empty; once a value is entered in Settings the chip looks like the rest.
+    if (crewOnly && !isCrewFieldPopulated(field)) {
       chip.classList.add("template-chip-crew");
     }
     const desc = t(templateFieldDescKey(field));
@@ -4660,6 +4677,9 @@ if (uploaderNameInput) {
   uploaderNameInput.addEventListener("input", () => {
     settingsState.uploaderName = uploaderNameInput.value;
     saveSettings();
+    // Rebuild the chips so the {{username}} chip's "unset" styling tracks the
+    // setting becoming (non-)empty.
+    renderTemplateBuilder();
     renderTemplatePreview();
   });
 }
@@ -4668,6 +4688,7 @@ if (uploadDateInput) {
   uploadDateInput.addEventListener("input", () => {
     settingsState.uploadDate = uploadDateInput.value;
     saveSettings();
+    renderTemplateBuilder();
     renderTemplatePreview();
   });
 }
@@ -4677,6 +4698,7 @@ if (uploadDateTodayToggle) {
     settingsState.uploadDateUseToday = uploadDateTodayToggle.checked;
     saveSettings();
     syncUploadDateUI();
+    renderTemplateBuilder();
     renderTemplatePreview();
   });
 }
@@ -4685,6 +4707,7 @@ if (uploadDateFormatSelect) {
   uploadDateFormatSelect.addEventListener("change", () => {
     settingsState.uploadDateFormat = uploadDateFormatSelect.value;
     saveSettings();
+    renderTemplateBuilder();
     renderTemplatePreview();
   });
 }
