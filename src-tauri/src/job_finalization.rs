@@ -9,7 +9,7 @@ use crate::job_metadata::JobMetadataFile;
 use crate::job_staging::resolve_staging_dir;
 use crate::output_conflict::{request_output_conflict_resolution, OutputConflictChoice};
 use crate::output_dir::resolve_downloads_dir;
-use crate::steam_api::sanitize_game_name;
+use crate::steam_api::{sanitize_game_name, sanitize_install_dir};
 
 /// Finalizes a job by moving staging output to final output directory
 ///
@@ -191,21 +191,22 @@ fn build_temp_output(
         .map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
     // Determine installdir: must match the on-disk folder name that all non-shared depot
-    // files will be merged into. Steam's canonical `config.installdir` (e.g. "ProjectZomboid")
-    // is the authoritative source and is used verbatim when available. When it isn't (the
+    // files will be merged into. Steam's canonical `config.installdir` (e.g. "The Crust")
+    // is the authoritative source and is used verbatim when available — including its spaces,
+    // since Steam creates `steamapps/common/The Crust` literally. When it isn't (the
     // best-effort api.steamcmd.net lookup failed), fall back to the game name. The depot name
     // is deliberately NOT used: it carries a platform suffix (e.g. "Project Zomboid - windows")
-    // that produces ugly folders like "Project.Zomboid.-.windows". The game name yields a clean
-    // "Project.Zomboid" that also matches the archive filename. Every path is sanitized: raw
-    // names can contain characters that are illegal in filesystem paths (e.g. the colon in
-    // "Fallout: New Vegas"), which is fine on Linux but fails on Windows (os error 267).
-    // sanitize_game_name is a no-op for already-clean installdir values like "ProjectZomboid".
+    // that produces ugly folders. We sanitize with `sanitize_install_dir` (not the archive
+    // sanitizer), which strips only Windows-illegal characters and PRESERVES spaces, so the
+    // common folder matches Steam exactly instead of dotting "The Crust" into "The.Crust".
+    // The `.acf` installdir value is written from this same string, keeping folder and
+    // manifest consistent.
     let install_dir_name = metadata
         .install_dir
         .as_deref()
-        .map(sanitize_game_name)
+        .map(sanitize_install_dir)
         .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| sanitize_game_name(&metadata.game_name));
+        .unwrap_or_else(|| sanitize_install_dir(&metadata.game_name));
 
     // Compute per-depot sizes from the staging structure BEFORE the merge.
     // After merge, all non-shared depot files live in one folder and individual sizes

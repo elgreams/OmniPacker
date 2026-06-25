@@ -226,6 +226,39 @@ pub fn sanitize_game_name(name: &str) -> String {
     sanitized.trim_end_matches('.').to_string()
 }
 
+/// Sanitizes a name for the inner `steamapps/common/<installdir>` folder.
+///
+/// Unlike [`sanitize_game_name`] (used for the outer archive/output name, where
+/// spaces become dots), this preserves spaces so the folder matches Steam's real
+/// on-disk install directory verbatim. Steam's `config.installdir` for "The
+/// Crust" is literally `The Crust`, and the folder Steam creates is
+/// `steamapps/common/The Crust` — dotting the space to `The.Crust` diverged from
+/// that. Spaces are valid in folder names on every platform we target.
+///
+/// Only genuinely Windows-illegal characters (`< > : " / \ | ? *` and control
+/// chars) and apostrophes/non-ASCII are removed, matching the character rules of
+/// `sanitize_game_name` minus the space-to-dot mapping. The `.acf` `installdir`
+/// value is written from the same sanitized string, so folder and manifest stay
+/// consistent.
+pub fn sanitize_install_dir(name: &str) -> String {
+    /// Characters forbidden in a Windows path segment (besides control chars).
+    const WINDOWS_ILLEGAL: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+
+    let sanitized: String = name
+        .chars()
+        .filter(|&c| {
+            !(c == '\''
+                || !c.is_ascii()
+                || c.is_control()
+                || WINDOWS_ILLEGAL.contains(&c))
+        })
+        .collect();
+
+    // Windows strips trailing dots and spaces from path segments; trim both so
+    // the created folder matches the `.acf` installdir value.
+    sanitized.trim_end_matches(['.', ' ']).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,5 +335,40 @@ mod tests {
             sanitize_game_name("The Witcher 3: Wild Hunt - Game of the Year Edition"),
             "The.Witcher.3.Wild.Hunt.-.Game.of.the.Year.Edition"
         );
+    }
+
+    #[test]
+    fn test_sanitize_install_dir_preserves_spaces() {
+        // The inner steamapps/common/<installdir> folder must match Steam's real
+        // on-disk directory, which keeps spaces (regression for "The Crust"
+        // appid 1465470 producing "The.Crust" instead of "The Crust").
+        assert_eq!(sanitize_install_dir("The Crust"), "The Crust");
+        assert_eq!(sanitize_install_dir("Portal 2"), "Portal 2");
+        assert_eq!(sanitize_install_dir("ProjectZomboid"), "ProjectZomboid");
+    }
+
+    #[test]
+    fn test_sanitize_install_dir_special_chars() {
+        // Apostrophes, colons, slashes and other Windows-illegal chars are still
+        // removed, but spaces around them are preserved.
+        assert_eq!(sanitize_install_dir("Assassin's Creed"), "Assassins Creed");
+        assert_eq!(sanitize_install_dir("Fallout: New Vegas"), "Fallout New Vegas");
+        assert_eq!(sanitize_install_dir("Game/Name\\Test"), "GameNameTest");
+        assert_eq!(sanitize_install_dir("A|B*C?D"), "ABCD");
+    }
+
+    #[test]
+    fn test_sanitize_install_dir_trailing_dots_and_spaces() {
+        // Windows strips trailing dots/spaces from folder names; trim them so the
+        // created folder matches the .acf installdir value.
+        assert_eq!(sanitize_install_dir("S.T.A.L.K.E.R."), "S.T.A.L.K.E.R");
+        assert_eq!(sanitize_install_dir("The Crust "), "The Crust");
+        assert_eq!(sanitize_install_dir("Trailing... "), "Trailing");
+    }
+
+    #[test]
+    fn test_sanitize_install_dir_non_ascii() {
+        assert_eq!(sanitize_install_dir("Café Game™"), "Caf Game");
+        assert_eq!(sanitize_install_dir("日本語ゲーム"), "");
     }
 }
