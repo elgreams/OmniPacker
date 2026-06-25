@@ -1,6 +1,6 @@
 [package]
 name = "omnipacker"
-version = "1.3.3"
+version = "1.4.0"
 description = "DepotDownloader Tauri frontend scaffold"
 authors = ["OmniPacker Contributors"]
 edition = "2021"
