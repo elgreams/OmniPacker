@@ -691,7 +691,7 @@ body.fixed-layout .output-conflict-modal {
 
 /* Settings Modal */
 .settings-modal {
-  width: 400px;
+  width: 660px;
   height: auto;
   min-height: 200px;
 }
@@ -708,9 +708,8 @@ body.fixed-layout .output-conflict-modal {
 }
 
 .settings-content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  columns: 2;
+  column-gap: 24px;
   padding: 8px 0;
 }
 
@@ -718,6 +717,8 @@ body.fixed-layout .output-conflict-modal {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  break-inside: avoid;
+  margin-bottom: 16px;
 }
 
 .settings-label {
