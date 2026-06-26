@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use chrono::Utc;
 use tauri::AppHandle;
 
-use crate::output_dir::resolve_downloads_dir;
+use crate::output_dir::resolve_base_dir;
 
 /// Generates a unique job ID in the format: <ISO8601_UTC_timestamp>_<short_unique_id>
 /// Example: 2026-01-05T11-30-02Z_a1b2c3
@@ -40,10 +40,10 @@ fn generate_short_id() -> String {
 }
 
 /// Resolves the staging directory path for a job
-/// Returns: downloads/staging/<job_id>/
+/// Returns: <base>/staging/<job_id>/
 pub fn resolve_staging_dir(app_handle: &AppHandle, job_id: &str) -> Result<PathBuf, String> {
-    let downloads_dir = resolve_downloads_dir(app_handle)?;
-    Ok(downloads_dir.join("staging").join(job_id))
+    let base_dir = resolve_base_dir(app_handle)?;
+    Ok(base_dir.join("staging").join(job_id))
 }
 
 /// Creates the staging directory for a job
@@ -91,8 +91,8 @@ pub fn cleanup_staging_dir(app_handle: &AppHandle, job_id: &str) -> Result<(), S
 
 /// Deletes any orphaned staging directories left behind by interrupted runs.
 pub fn cleanup_orphaned_staging(app_handle: &AppHandle) -> Result<usize, String> {
-    let downloads_dir = resolve_downloads_dir(app_handle)?;
-    let staging_root = downloads_dir.join("staging");
+    let base_dir = resolve_base_dir(app_handle)?;
+    let staging_root = base_dir.join("staging");
 
     if !staging_root.exists() {
         return Ok(0);

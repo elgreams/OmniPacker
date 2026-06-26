@@ -115,7 +115,10 @@ jobs:
           # Option C: extract the NSIS installer with 7-Zip (no execution) to build a faithful, arch-independent portable.
           # Extract into a named folder so the zip wraps a single top-level directory the user can drag out intact.
           $setup = (Get-ChildItem "$bundle/nsis/*-setup.exe").FullName
-          $folderName = "OmniPacker-$version.${{ matrix.arch }}.Windows"
+          # Keep the inner folder name short ("OmniPacker.v<version>") so the
+          # portable working dirs (outputs/, staging/) nested beneath it leave
+          # as much MAX_PATH headroom as possible for deeply-nested game files.
+          $folderName = "OmniPacker.v$version"
           $portableDir = Join-Path $env:RUNNER_TEMP "portable-${{ matrix.arch }}/$folderName"
           & 7z x $setup "-o$portableDir" -y | Out-Null
           Remove-Item -Recurse -Force (Join-Path $portableDir '$PLUGINSDIR') -ErrorAction SilentlyContinue

@@ -500,7 +500,14 @@ pub fn calculate_7z_compression_args(
     }
 
     args.push(output_archive.to_string_lossy().to_string()); // Archive path
-    args.push(source_dir.to_string_lossy().to_string()); // Source directory
+    // Append a wildcard so 7-Zip archives the *contents* of source_dir rather
+    // than the directory itself. 7-Zip stores entries relative to the wildcard's
+    // base dir, so the archive root becomes `steamapps\…` instead of the long
+    // `<Game>.Build.<id>.<plat>.<branch>\steamapps\…`. That redundant wrapper
+    // folder (whose name is already carried by the .7z filename) added ~40 chars
+    // to every internal path and pushed deeply-nested game files past Windows'
+    // MAX_PATH limit on extraction. This matches SuperSteamPacker's `7z a … *`.
+    args.push(source_dir.join("*").to_string_lossy().to_string()); // Source contents
     args
 }
 
@@ -843,5 +850,23 @@ mod tests {
         let (accepted, rejected) = filter_custom_args("-mhe=off -v50m");
         assert!(accepted.contains(&"-mhe=off".to_string()));
         assert!(rejected.contains(&"-v50m".to_string()));
+    }
+
+    #[test]
+    fn source_is_dir_contents_not_dir_itself() {
+        // The source must be `<dir>/*` so 7-Zip archives the folder's contents
+        // (root = steamapps\…) instead of nesting them under the long
+        // `<Game>.Build.…` wrapper folder, which overflowed MAX_PATH.
+        let args = calculate_7z_compression_args(
+            Path::new("/tmp/out"),
+            Path::new("/tmp/out.7z"),
+            None,
+            None,
+            None,
+        );
+        let source = args.last().expect("source arg present");
+        let expected = Path::new("/tmp/out").join("*").to_string_lossy().to_string();
+        assert_eq!(source, &expected);
+        assert!(!args.iter().any(|a| a == "/tmp/out"), "bare dir must not be passed");
     }
 }

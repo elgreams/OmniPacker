@@ -4,13 +4,13 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 
 use crate::debug_console::debug_console_enabled_static;
-use crate::output_dir::resolve_downloads_dir;
+use crate::output_dir::resolve_base_dir;
 
-/// Resolves the logs directory as a sibling of the downloads directory,
-/// creating it if necessary.
+/// Resolves the logs directory under the base working directory, creating it if
+/// necessary.
 fn resolve_logs_dir(app_handle: &AppHandle) -> Option<PathBuf> {
-    let downloads = resolve_downloads_dir(app_handle).ok()?;
-    let logs_dir = downloads.parent()?.join("logs");
+    let base = resolve_base_dir(app_handle).ok()?;
+    let logs_dir = base.join("logs");
     fs::create_dir_all(&logs_dir).ok()?;
     Some(logs_dir)
 }

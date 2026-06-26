@@ -13,7 +13,7 @@ use tauri_plugin_opener::OpenerExt;
 fn ensure_writable_dir(path: &Path) -> Result<(), String> {
     std::fs::create_dir_all(path).map_err(|err| {
         format!(
-            "Failed to create downloads directory {}: {err}",
+            "Failed to create working directory {}: {err}",
             path.display()
         )
     })?;
@@ -30,7 +30,7 @@ fn ensure_writable_dir(path: &Path) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "Downloads directory is not writable: {}",
+            "Working directory is not writable: {}",
             path.display()
         ))
     }
@@ -146,11 +146,17 @@ fn open_path_appimage(path: &Path) -> Result<(), String> {
     })
 }
 
-pub fn resolve_downloads_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
+/// Resolves the base working directory that holds `outputs/`, `staging/`, and
+/// `logs/`. In a portable build this is the folder next to the executable; in a
+/// debug build (or when the portable folder isn't writable) it's the app-data
+/// directory. Previously these subfolders lived under an extra `downloads/`
+/// level, which was dropped to shorten paths and stay under Windows' MAX_PATH
+/// limit for deeply-nested game files.
+pub fn resolve_base_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
     let fallback_dir = app_handle
         .path()
-        .resolve("downloads", tauri::path::BaseDirectory::AppData)
-        .map_err(|err| format!("Failed to resolve app data downloads directory: {err}"))?;
+        .app_data_dir()
+        .map_err(|err| format!("Failed to resolve app data directory: {err}"))?;
 
     if cfg!(debug_assertions) {
         ensure_writable_dir(&fallback_dir)?;
@@ -159,7 +165,7 @@ pub fn resolve_downloads_dir(app_handle: &AppHandle) -> Result<PathBuf, String> 
 
     let portable_dir = std::env::current_exe()
         .ok()
-        .and_then(|path| path.parent().map(|parent| parent.join("downloads")));
+        .and_then(|path| path.parent().map(|parent| parent.to_path_buf()));
 
     if let Some(dir) = portable_dir {
         if ensure_writable_dir(&dir).is_ok() {
@@ -173,14 +179,14 @@ pub fn resolve_downloads_dir(app_handle: &AppHandle) -> Result<PathBuf, String> 
 
 #[tauri::command]
 pub fn get_output_folder(app_handle: AppHandle) -> Result<String, String> {
-    let path = resolve_downloads_dir(&app_handle)?;
+    let path = resolve_base_dir(&app_handle)?;
     Ok(path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
 pub fn open_output_folder(app_handle: AppHandle) -> Result<(), String> {
-    // Finished packages land in the "outputs" subfolder, not the downloads root.
-    let outputs_dir = resolve_downloads_dir(&app_handle)?.join("outputs");
+    // Finished packages land in the "outputs" subfolder, not the base root.
+    let outputs_dir = resolve_base_dir(&app_handle)?.join("outputs");
     // Create it if no job has produced output yet, so the open doesn't fail.
     std::fs::create_dir_all(&outputs_dir)
         .map_err(|err| format!("Failed to create outputs directory: {err}"))?;

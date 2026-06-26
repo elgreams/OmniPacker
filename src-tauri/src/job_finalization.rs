@@ -8,7 +8,7 @@ use crate::acf_generator;
 use crate::job_metadata::JobMetadataFile;
 use crate::job_staging::resolve_staging_dir;
 use crate::output_conflict::{request_output_conflict_resolution, OutputConflictChoice};
-use crate::output_dir::resolve_downloads_dir;
+use crate::output_dir::resolve_base_dir;
 use crate::steam_api::{sanitize_game_name, sanitize_install_dir};
 
 /// Finalizes a job by moving staging output to final output directory
@@ -143,8 +143,8 @@ fn compute_final_output_path(
     app_handle: &AppHandle,
     metadata: &JobMetadataFile,
 ) -> Result<PathBuf, String> {
-    let downloads_dir = resolve_downloads_dir(app_handle)?;
-    let outputs_dir = downloads_dir.join("outputs");
+    let base_dir = resolve_base_dir(app_handle)?;
+    let outputs_dir = base_dir.join("outputs");
 
     // Format: <GameNameSanitized>.Build.<BuildId>.<Platform>.<Branch>
     let sanitized_name = sanitize_game_name(&metadata.game_name);
@@ -176,8 +176,8 @@ fn build_temp_output(
     staging_dir: &Path,
     metadata: &JobMetadataFile,
 ) -> Result<PathBuf, String> {
-    let downloads_dir = resolve_downloads_dir(app_handle)?;
-    let outputs_dir = downloads_dir.join("outputs");
+    let base_dir = resolve_base_dir(app_handle)?;
+    let outputs_dir = base_dir.join("outputs");
     let temp_dir = outputs_dir.join(format!(".tmp_{}", job_id));
 
     // Clean up temp directory if it exists from a previous failure
@@ -550,7 +550,7 @@ fn atomic_finalize(temp_path: &Path, final_path: &Path) -> Result<(), String> {
             .map_err(|e| format!("Failed to create outputs directory: {}", e))?;
     }
 
-    // Atomic rename (both paths are under downloads/outputs/, guaranteed same filesystem)
+    // Atomic rename (both paths are under outputs/, guaranteed same filesystem)
     fs::rename(temp_path, final_path).map_err(|e| {
         format!(
             "Failed to rename temp to final output ({}→{}): {}",
