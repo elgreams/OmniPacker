@@ -4,13 +4,14 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 
 use crate::debug_console::debug_console_enabled_static;
-use crate::output_dir::resolve_base_dir;
+use crate::output_dir::resolve_scratch_dir;
 
-/// Resolves the logs directory under the base working directory, creating it if
-/// necessary.
+/// Resolves the logs directory under the scratch working directory, creating it
+/// if necessary. With a custom output folder this is the hidden
+/// `.omnipacker-tmp/logs`; by default it sits directly under the base dir.
 fn resolve_logs_dir(app_handle: &AppHandle) -> Option<PathBuf> {
-    let base = resolve_base_dir(app_handle).ok()?;
-    let logs_dir = base.join("logs");
+    let scratch = resolve_scratch_dir(app_handle).ok()?;
+    let logs_dir = scratch.join("logs");
     fs::create_dir_all(&logs_dir).ok()?;
     Some(logs_dir)
 }

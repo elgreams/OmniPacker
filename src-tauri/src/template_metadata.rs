@@ -33,6 +33,14 @@ pub struct TemplateMetadata {
     /// or today's date), not job.json, so it is populated separately after
     /// construction (empty by default). Feeds the `{{upload_date}}` token.
     pub upload_date: String,
+    /// Primary depot's ID. Scalar counterpart to the per-depot `{{depot_id}}`
+    /// loop token, so single-field blocks (title/version/free text) can
+    /// reference the main game depot. Empty when no primary depot is known.
+    pub primary_depot_id: String,
+    /// Primary depot's manifest ID. Scalar counterpart to the per-depot
+    /// `{{manifest_id}}` loop token. Empty when the primary depot has no
+    /// matching entry in `depots`.
+    pub primary_manifest_id: String,
     pub depots: Vec<TemplateDepot>,
 }
 
@@ -42,7 +50,7 @@ impl TemplateMetadata {
             .build_datetime_utc
             .unwrap_or(metadata.appinfo_fetched_at)
             .with_timezone(&Utc);
-        let depots = metadata
+        let depots: Vec<TemplateDepot> = metadata
             .depots
             .iter()
             .map(|depot| TemplateDepot {
@@ -51,6 +59,15 @@ impl TemplateMetadata {
                 manifest_id: depot.manifest_id.clone(),
             })
             .collect();
+
+        // Resolve the primary depot's manifest from the depot list so the scalar
+        // `{{primary_manifest_id}}` token has a value. Empty when the primary
+        // depot isn't present (e.g. older job.json without a match).
+        let primary_manifest_id = depots
+            .iter()
+            .find(|d| d.depot_id == metadata.primary_depot_id)
+            .map(|d| d.manifest_id.clone())
+            .unwrap_or_default();
 
         let month_name = month_name(timestamp.month());
         let build_datetime_utc = format!(
@@ -78,6 +95,8 @@ impl TemplateMetadata {
             // The upload date is injected later via set_upload_date; default to
             // empty so the `{{upload_date}}` token renders blank when unset.
             upload_date: String::new(),
+            primary_depot_id: metadata.primary_depot_id.clone(),
+            primary_manifest_id,
             depots,
         }
     }
@@ -143,5 +162,76 @@ fn month_name(month: u32) -> &'static str {
         11 => "November",
         12 => "December",
         _ => "Unknown",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::job_metadata::{BuildIdSource, DepotInfo, JobMetadataFile};
+
+    #[test]
+    fn primary_tokens_resolve_to_primary_depot() {
+        // from_job_metadata must carry the primary depot id and find its manifest
+        // in the depot list, even when the primary isn't the first depot.
+        let job = JobMetadataFile::new(
+            "job".to_string(),
+            "2379780".to_string(),
+            "public".to_string(),
+            "Win64".to_string(),
+            "2379781".to_string(),
+            "Balatro".to_string(),
+            "18674832".to_string(),
+            BuildIdSource::AppBuildid,
+            None,
+            vec![
+                DepotInfo {
+                    depot_id: "228989".to_string(),
+                    depot_name: "Steamworks Common Redistributables".to_string(),
+                    manifest_id: "7206221393165260579".to_string(),
+                    manifest_id_used: None,
+                    dlcappid: None,
+                },
+                DepotInfo {
+                    depot_id: "2379781".to_string(),
+                    depot_name: "Balatro".to_string(),
+                    manifest_id: "4851806656204679952".to_string(),
+                    manifest_id_used: None,
+                    dlcappid: None,
+                },
+            ],
+        );
+
+        let meta = TemplateMetadata::from_job_metadata(&job);
+        assert_eq!(meta.primary_depot_id, "2379781");
+        assert_eq!(meta.primary_manifest_id, "4851806656204679952");
+    }
+
+    #[test]
+    fn primary_manifest_empty_when_primary_absent_from_depots() {
+        // If the primary depot id has no matching depot entry, the manifest token
+        // resolves to empty rather than picking an unrelated depot.
+        let job = JobMetadataFile::new(
+            "job".to_string(),
+            "2379780".to_string(),
+            "public".to_string(),
+            "Win64".to_string(),
+            "999999".to_string(),
+            "Balatro".to_string(),
+            "18674832".to_string(),
+            BuildIdSource::AppBuildid,
+            None,
+            vec![DepotInfo {
+                depot_id: "2379781".to_string(),
+                depot_name: "Balatro".to_string(),
+                manifest_id: "4851806656204679952".to_string(),
+                manifest_id_used: None,
+                dlcappid: None,
+            }],
+        );
+
+        let meta = TemplateMetadata::from_job_metadata(&job);
+        assert_eq!(meta.primary_depot_id, "999999");
+        assert_eq!(meta.primary_manifest_id, "");
     }
 }

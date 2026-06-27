@@ -209,6 +209,21 @@
 
           <div class="settings-group">
             <label class="settings-checkbox-row">
+              <input id="output-dir-toggle" type="checkbox" />
+              <span data-i18n="settings.outputDirToggle">Use custom output folder</span>
+            </label>
+            <div class="settings-output-dir-row">
+              <input id="output-dir-input" type="text" disabled data-i18n-placeholder="settings.outputDirPlaceholder" placeholder="Default (next to app)" />
+              <button type="button" id="output-dir-browse" class="settings-output-dir-browse" disabled data-i18n="settings.outputDirBrowse">Browse…</button>
+            </div>
+            <span class="settings-hint" id="output-dir-status"></span>
+            <span class="settings-hint" data-i18n="settings.outputDirHint">
+              Finished packages are written here instead of the default location.
+            </span>
+          </div>
+
+          <div class="settings-group">
+            <label class="settings-checkbox-row">
               <input id="compression-password-toggle" type="checkbox" />
               <span data-i18n="settings.compressionPasswordToggle">Use compression password</span>
             </label>

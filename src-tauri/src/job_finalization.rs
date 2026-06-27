@@ -8,7 +8,7 @@ use crate::acf_generator;
 use crate::job_metadata::JobMetadataFile;
 use crate::job_staging::resolve_staging_dir;
 use crate::output_conflict::{request_output_conflict_resolution, OutputConflictChoice};
-use crate::output_dir::resolve_base_dir;
+use crate::output_dir::{resolve_outputs_dir, resolve_scratch_dir};
 use crate::steam_api::{sanitize_game_name, sanitize_install_dir};
 
 /// Finalizes a job by moving staging output to final output directory
@@ -143,8 +143,7 @@ fn compute_final_output_path(
     app_handle: &AppHandle,
     metadata: &JobMetadataFile,
 ) -> Result<PathBuf, String> {
-    let base_dir = resolve_base_dir(app_handle)?;
-    let outputs_dir = base_dir.join("outputs");
+    let outputs_dir = resolve_outputs_dir(app_handle)?;
 
     // Format: <GameNameSanitized>.Build.<BuildId>.<Platform>.<Branch>
     let sanitized_name = sanitize_game_name(&metadata.game_name);
@@ -176,9 +175,10 @@ fn build_temp_output(
     staging_dir: &Path,
     metadata: &JobMetadataFile,
 ) -> Result<PathBuf, String> {
-    let base_dir = resolve_base_dir(app_handle)?;
-    let outputs_dir = base_dir.join("outputs");
-    let temp_dir = outputs_dir.join(format!(".tmp_{}", job_id));
+    // Temp assembly lives in the scratch dir, which is on the same volume as the
+    // final outputs dir (a hidden subfolder of the custom output dir, or <base>
+    // by default), so the temp → final move stays an atomic rename.
+    let temp_dir = resolve_scratch_dir(app_handle)?.join(format!(".tmp_{}", job_id));
 
     // Clean up temp directory if it exists from a previous failure
     if temp_dir.exists() {
@@ -550,7 +550,9 @@ fn atomic_finalize(temp_path: &Path, final_path: &Path) -> Result<(), String> {
             .map_err(|e| format!("Failed to create outputs directory: {}", e))?;
     }
 
-    // Atomic rename (both paths are under outputs/, guaranteed same filesystem)
+    // Atomic rename. Temp lives in the scratch dir and final in the outputs dir,
+    // both rooted at the same place (the custom output folder, or <base>), so
+    // they're on one filesystem and this is a real rename, not a cross-device copy.
     fs::rename(temp_path, final_path).map_err(|e| {
         format!(
             "Failed to rename temp to final output ({}→{}): {}",

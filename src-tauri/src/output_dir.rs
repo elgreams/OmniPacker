@@ -146,12 +146,12 @@ fn open_path_appimage(path: &Path) -> Result<(), String> {
     })
 }
 
-/// Resolves the base working directory that holds `outputs/`, `staging/`, and
-/// `logs/`. In a portable build this is the folder next to the executable; in a
-/// debug build (or when the portable folder isn't writable) it's the app-data
-/// directory. Previously these subfolders lived under an extra `downloads/`
-/// level, which was dropped to shorten paths and stay under Windows' MAX_PATH
-/// limit for deeply-nested game files.
+/// Resolves the default base working directory. In a portable build this is the
+/// folder next to the executable; in a debug build (or when the portable folder
+/// isn't writable) it's the app-data directory. Used only when no custom output
+/// directory is set — see `resolve_outputs_dir` / `resolve_scratch_dir`, which
+/// layer the override on top. Previously the subfolders lived under an extra
+/// `downloads/` level, dropped to stay under Windows' MAX_PATH limit.
 pub fn resolve_base_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
     let fallback_dir = app_handle
         .path()
@@ -177,16 +177,51 @@ pub fn resolve_base_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
     Ok(fallback_dir)
 }
 
+/// Where finished `<Game>.Build.…` packages are written.
+///
+/// - Custom output folder set: the user's chosen directory *directly* — packages
+///   land where they pointed, with no intermediate `outputs/` level (B2).
+/// - Default: `<base>/outputs`.
+///
+/// Validates writability here (not just when the override is saved) so an
+/// unplugged/removed drive fails the job loudly instead of silently reverting.
+pub fn resolve_outputs_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    if let Some(custom) = crate::output_override::read_override(app_handle) {
+        ensure_writable_dir(&custom)?;
+        return Ok(custom);
+    }
+    Ok(resolve_base_dir(app_handle)?.join("outputs"))
+}
+
+/// Where transient scratch (download staging, temp output assembly, debug logs)
+/// is written. Kept separate from finished output so it can be hidden and
+/// cleaned up independently.
+///
+/// - Custom output folder set: a hidden `.omnipacker-tmp/` *inside* the user's
+///   folder, so the working set sits on the same volume as the final packages
+///   (atomic finalize stays a rename) without visibly cluttering their folder.
+/// - Default: `<base>` itself (staging/, logs/, and temp dirs hang directly off
+///   it, matching the pre-override layout).
+pub fn resolve_scratch_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    if let Some(custom) = crate::output_override::read_override(app_handle) {
+        let scratch = custom.join(".omnipacker-tmp");
+        ensure_writable_dir(&scratch)?;
+        return Ok(scratch);
+    }
+    resolve_base_dir(app_handle)
+}
+
 #[tauri::command]
 pub fn get_output_folder(app_handle: AppHandle) -> Result<String, String> {
-    let path = resolve_base_dir(&app_handle)?;
+    let path = resolve_outputs_dir(&app_handle)?;
     Ok(path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
 pub fn open_output_folder(app_handle: AppHandle) -> Result<(), String> {
-    // Finished packages land in the "outputs" subfolder, not the base root.
-    let outputs_dir = resolve_base_dir(&app_handle)?.join("outputs");
+    // Finished packages land in the outputs directory (the user's custom folder
+    // directly, or <base>/outputs by default).
+    let outputs_dir = resolve_outputs_dir(&app_handle)?;
     // Create it if no job has produced output yet, so the open doesn't fail.
     std::fs::create_dir_all(&outputs_dir)
         .map_err(|err| format!("Failed to create outputs directory: {err}"))?;

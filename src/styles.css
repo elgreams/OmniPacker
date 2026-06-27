@@ -802,10 +802,40 @@ body.fixed-layout .output-conflict-modal {
   display: flex;
 }
 
+.settings-output-dir-row {
+  display: flex;
+  gap: 6px;
+  padding-left: 22px;
+}
+
+.settings-output-dir-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-output-dir-browse {
+  flex: 0 0 auto;
+  padding: 0 12px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #e6e6e6;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-output-dir-browse:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .settings-hint {
   font-size: 11px;
   color: #999;
   line-height: 1.3;
+}
+
+.settings-hint-error {
+  color: #e6796f;
 }
 
 .settings-delete-login-button {

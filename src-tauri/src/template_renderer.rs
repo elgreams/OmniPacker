@@ -123,6 +123,8 @@ pub fn render_template(
     base_values.insert("website".to_string(), metadata.website.clone());
     base_values.insert("username".to_string(), metadata.username.clone());
     base_values.insert("upload_date".to_string(), metadata.upload_date.clone());
+    base_values.insert("primary_depot_id".to_string(), metadata.primary_depot_id.clone());
+    base_values.insert("primary_manifest_id".to_string(), metadata.primary_manifest_id.clone());
 
     for block in blocks {
         let part = match block {
@@ -386,6 +388,8 @@ mod tests {
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
             upload_date: String::new(),
+            primary_depot_id: String::new(),
+            primary_manifest_id: String::new(),
             depots: vec![
                 TemplateDepot {
                     depot_id: "2923300".to_string(),
@@ -418,6 +422,25 @@ mod tests {
     }
 
     #[test]
+    fn test_primary_depot_tokens_resolve_in_single_field_block() {
+        // The scalar {{primary_depot_id}}/{{primary_manifest_id}} tokens must
+        // resolve inside a single-render block (here a Title), unlike the
+        // per-depot {{depot_id}}/{{manifest_id}} that only loop in a DepotList.
+        let mut metadata = sample_metadata();
+        metadata.primary_depot_id = "2379781".to_string();
+        metadata.primary_manifest_id = "4851806656204679952".to_string();
+
+        let blocks = vec![TemplateBlock::Title {
+            config: TitleConfig {
+                template: "Depot {{primary_depot_id}} Manifest {{primary_manifest_id}}".to_string(),
+            },
+        }];
+
+        let result = render_template(&blocks, &metadata).unwrap();
+        assert_eq!(result, "Depot 2379781 Manifest 4851806656204679952");
+    }
+
+    #[test]
     fn test_crew_template_renders_store_tokens() {
         let mut metadata = TemplateMetadata {
             game_name: "Balatro".to_string(),
@@ -430,6 +453,8 @@ mod tests {
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
             upload_date: String::new(),
+            primary_depot_id: String::new(),
+            primary_manifest_id: String::new(),
             depots: vec![TemplateDepot {
                 depot_id: "2379781".to_string(),
                 depot_name: "Balatro".to_string(),
@@ -465,6 +490,8 @@ mod tests {
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
             upload_date: String::new(),
+            primary_depot_id: String::new(),
+            primary_manifest_id: String::new(),
             depots: vec![],
         };
 
@@ -491,6 +518,8 @@ mod tests {
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
             upload_date: String::new(),
+            primary_depot_id: String::new(),
+            primary_manifest_id: String::new(),
             depots: vec![TemplateDepot {
                 depot_id: "2923300".to_string(),
                 depot_name: "Balatro Content".to_string(),
@@ -567,6 +596,8 @@ mod tests {
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
             upload_date: String::new(),
+            primary_depot_id: String::new(),
+            primary_manifest_id: String::new(),
             depots: vec![TemplateDepot {
                 depot_id: "2923300".to_string(),
                 depot_name: "Balatro Content".to_string(),

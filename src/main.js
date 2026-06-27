@@ -23,6 +23,10 @@ const settingsButton = document.querySelector(".settings-button");
 const settingsModalOverlay = document.querySelector(".settings-modal-overlay");
 const settingsCloseButton = document.querySelector(".settings-close-button");
 const skipCompressionToggle = document.getElementById("skip-compression-toggle");
+const outputDirToggle = document.getElementById("output-dir-toggle");
+const outputDirInput = document.getElementById("output-dir-input");
+const outputDirBrowse = document.getElementById("output-dir-browse");
+const outputDirStatus = document.getElementById("output-dir-status");
 const compressionPasswordToggle = document.getElementById(
   "compression-password-toggle",
 );
@@ -142,6 +146,13 @@ const settingsState = {
   // Version the user chose to skip via the update banner ("Skip this version").
   // The banner won't show again until a release newer than this appears.
   skippedUpdateVersion: null,
+  // Custom output directory. The operative value is owned by the backend
+  // (persisted in AppData, read by resolve_outputs_dir); these two fields just
+  // mirror it so the Settings UI can render instantly on open before the
+  // backend value is fetched/reconciled. `outputDirEnabled` is the checkbox;
+  // `outputDir` is the chosen path. Empty path with the box checked = invalid.
+  outputDirEnabled: false,
+  outputDir: "",
 };
 
 const outputConflictState = {
@@ -241,6 +252,13 @@ const translations = {
     "settings.title": "Settings",
     "settings.language": "Language:",
     "settings.skipCompression": "Skip compression after download",
+    "settings.outputDirToggle": "Use custom output folder",
+    "settings.outputDirPlaceholder": "Default (next to app)",
+    "settings.outputDirBrowse": "Browse…",
+    "settings.outputDirHint":
+      "Finished packages are written here instead of the default location.",
+    "settings.outputDirSaved": "Output folder saved.",
+    "settings.outputDirError": "Could not use that folder: {error}",
     "settings.compressionPasswordToggle": "Use compression password",
     "settings.compressionPasswordLabel": "Compression password:",
     "settings.compressionPasswordRequired":
@@ -325,6 +343,8 @@ const translations = {
     "template.help.field.depot_id": "The depot's numeric ID.",
     "template.help.field.depot_name": "The depot's name.",
     "template.help.field.manifest_id": "The depot's manifest ID number.",
+    "template.help.field.primary_depot_id": "The primary (main game) depot's numeric ID.",
+    "template.help.field.primary_manifest_id": "The primary depot's manifest ID number.",
     "template.action.up": "Move up",
     "template.action.down": "Move down",
     "template.action.remove": "Remove",
@@ -462,6 +482,13 @@ const translations = {
     "settings.title": "Configuración",
     "settings.language": "Idioma:",
     "settings.skipCompression": "Omitir compresión después de la descarga",
+    "settings.outputDirToggle": "Usar carpeta de salida personalizada",
+    "settings.outputDirPlaceholder": "Predeterminada (junto a la app)",
+    "settings.outputDirBrowse": "Examinar…",
+    "settings.outputDirHint":
+      "Los paquetes terminados se guardan aquí en lugar de la ubicación predeterminada.",
+    "settings.outputDirSaved": "Carpeta de salida guardada.",
+    "settings.outputDirError": "No se pudo usar esa carpeta: {error}",
     "settings.compressionPasswordToggle": "Usar contraseña de compresión",
     "settings.compressionPasswordLabel": "Contraseña de compresión:",
     "settings.compressionPasswordRequired":
@@ -546,6 +573,8 @@ const translations = {
     "template.help.field.depot_id": "El ID numérico del depósito.",
     "template.help.field.depot_name": "El nombre del depósito.",
     "template.help.field.manifest_id": "El número de ID de manifiesto del depósito.",
+    "template.help.field.primary_depot_id": "El ID numérico del depósito principal (del juego).",
+    "template.help.field.primary_manifest_id": "El número de ID de manifiesto del depósito principal.",
     "template.action.up": "Mover arriba",
     "template.action.down": "Mover abajo",
     "template.action.remove": "Eliminar",
@@ -685,6 +714,13 @@ const translations = {
     "settings.title": "Paramètres",
     "settings.language": "Langue:",
     "settings.skipCompression": "Ignorer la compression après le téléchargement",
+    "settings.outputDirToggle": "Utiliser un dossier de sortie personnalisé",
+    "settings.outputDirPlaceholder": "Par défaut (à côté de l'application)",
+    "settings.outputDirBrowse": "Parcourir…",
+    "settings.outputDirHint":
+      "Les paquets finis sont écrits ici au lieu de l'emplacement par défaut.",
+    "settings.outputDirSaved": "Dossier de sortie enregistré.",
+    "settings.outputDirError": "Impossible d'utiliser ce dossier : {error}",
     "settings.compressionPasswordToggle": "Utiliser un mot de passe de compression",
     "settings.compressionPasswordLabel": "Mot de passe de compression :",
     "settings.compressionPasswordRequired":
@@ -769,6 +805,8 @@ const translations = {
     "template.help.field.depot_id": "L'identifiant numérique du dépôt.",
     "template.help.field.depot_name": "Le nom du dépôt.",
     "template.help.field.manifest_id": "Le numéro d'ID de manifeste du dépôt.",
+    "template.help.field.primary_depot_id": "L'identifiant numérique du dépôt principal (du jeu).",
+    "template.help.field.primary_manifest_id": "Le numéro d'ID de manifeste du dépôt principal.",
     "template.action.up": "Monter",
     "template.action.down": "Descendre",
     "template.action.remove": "Supprimer",
@@ -908,6 +946,13 @@ const translations = {
     "settings.title": "Einstellungen",
     "settings.language": "Sprache:",
     "settings.skipCompression": "Komprimierung nach dem Download überspringen",
+    "settings.outputDirToggle": "Eigenen Ausgabeordner verwenden",
+    "settings.outputDirPlaceholder": "Standard (neben der App)",
+    "settings.outputDirBrowse": "Durchsuchen…",
+    "settings.outputDirHint":
+      "Fertige Pakete werden hier statt am Standardspeicherort abgelegt.",
+    "settings.outputDirSaved": "Ausgabeordner gespeichert.",
+    "settings.outputDirError": "Dieser Ordner konnte nicht verwendet werden: {error}",
     "settings.compressionPasswordToggle": "Kompressionspasswort verwenden",
     "settings.compressionPasswordLabel": "Kompressionspasswort:",
     "settings.compressionPasswordRequired":
@@ -992,6 +1037,8 @@ const translations = {
     "template.help.field.depot_id": "Die numerische Depot-ID.",
     "template.help.field.depot_name": "Der Name des Depots.",
     "template.help.field.manifest_id": "Die Manifest-ID-Nummer des Depots.",
+    "template.help.field.primary_depot_id": "Die numerische ID des Haupt-Depots (Spiel).",
+    "template.help.field.primary_manifest_id": "Die Manifest-ID-Nummer des Haupt-Depots.",
     "template.action.up": "Nach oben",
     "template.action.down": "Nach unten",
     "template.action.remove": "Entfernen",
@@ -1129,6 +1176,13 @@ const translations = {
     "settings.title": "Настройки",
     "settings.language": "Язык:",
     "settings.skipCompression": "Пропустить сжатие после загрузки",
+    "settings.outputDirToggle": "Использовать свою папку вывода",
+    "settings.outputDirPlaceholder": "По умолчанию (рядом с приложением)",
+    "settings.outputDirBrowse": "Обзор…",
+    "settings.outputDirHint":
+      "Готовые пакеты записываются сюда вместо расположения по умолчанию.",
+    "settings.outputDirSaved": "Папка вывода сохранена.",
+    "settings.outputDirError": "Не удалось использовать эту папку: {error}",
     "settings.compressionPasswordToggle": "Использовать пароль для сжатия",
     "settings.compressionPasswordLabel": "Пароль для сжатия:",
     "settings.compressionPasswordRequired":
@@ -1213,6 +1267,8 @@ const translations = {
     "template.help.field.depot_id": "Числовой ID депо.",
     "template.help.field.depot_name": "Название депо.",
     "template.help.field.manifest_id": "Числовой ID манифеста депо.",
+    "template.help.field.primary_depot_id": "Числовой ID основного депо (игры).",
+    "template.help.field.primary_manifest_id": "Числовой ID манифеста основного депо.",
     "template.action.up": "Вверх",
     "template.action.down": "Вниз",
     "template.action.remove": "Удалить",
@@ -1336,6 +1392,11 @@ const TEMPLATE_SINGLE_FIELDS = [
   "website",
   "username",
   "upload_date",
+  // Scalar primary-depot tokens, usable in single-render blocks (title/version/
+  // free text). The per-depot {{depot_id}}/{{manifest_id}} only resolve inside
+  // the looped Depot List line; these point at the primary depot specifically.
+  "primary_depot_id",
+  "primary_manifest_id",
 ];
 const TEMPLATE_DEPOT_FIELDS = ["depot_id", "depot_name", "manifest_id"];
 
@@ -1379,6 +1440,8 @@ const TEMPLATE_DEFAULT_METADATA = {
   game_description:
     "Balatro is a hypnotically satisfying deckbuilder where you play illegal poker hands.",
   website: "https://www.playbalatro.com",
+  primary_depot_id: "2379781",
+  primary_manifest_id: "4851806656204679952",
   depots: [
     {
       depot_id: "228989",
@@ -1978,6 +2041,10 @@ const renderTemplateOutput = (blocks, metadata) => {
     // The upload date comes from the global "Upload date" setting (manual text
     // or today's date) and feeds {{upload_date}}. Blank when unset.
     upload_date: resolveUploadDate(),
+    // Scalar primary-depot tokens, mirroring the backend TemplateMetadata so
+    // preview matches job output.
+    primary_depot_id: metadata.primary_depot_id || "",
+    primary_manifest_id: metadata.primary_manifest_id || "",
   };
   const depots = Array.isArray(metadata.depots) ? metadata.depots : [];
   const outputParts = [];
@@ -2504,6 +2571,12 @@ const loadSettings = () => {
       ) {
         settingsState.selectedProfiles = parsed.selectedProfiles;
       }
+      if (typeof parsed.outputDirEnabled === "boolean") {
+        settingsState.outputDirEnabled = parsed.outputDirEnabled;
+      }
+      if (typeof parsed.outputDir === "string") {
+        settingsState.outputDir = parsed.outputDir;
+      }
     }
     if (
       settingsState.compressionPasswordEnabled &&
@@ -2629,10 +2702,39 @@ const isCompressionPasswordValid = () => {
   return Boolean(compressionPasswordInput?.value?.trim());
 };
 
+// Enables/disables the custom-output-folder path field and Browse button to
+// track its checkbox, mirroring the compression-password row.
+const syncOutputDirUI = () => {
+  if (!outputDirToggle) {
+    return;
+  }
+  const enabled = outputDirToggle.checked;
+  if (outputDirInput) {
+    outputDirInput.disabled = !enabled;
+  }
+  if (outputDirBrowse) {
+    outputDirBrowse.disabled = !enabled;
+  }
+};
+
+const setOutputDirStatus = (message, isError = false) => {
+  if (!outputDirStatus) {
+    return;
+  }
+  outputDirStatus.textContent = message || "";
+  outputDirStatus.classList.toggle("settings-hint-error", Boolean(message) && isError);
+};
+
 // Apply settings to UI
 const applySettingsToUI = () => {
   if (skipCompressionToggle) {
     skipCompressionToggle.checked = settingsState.skipCompression;
+  }
+  if (outputDirToggle) {
+    outputDirToggle.checked = settingsState.outputDirEnabled;
+  }
+  if (outputDirInput) {
+    outputDirInput.value = settingsState.outputDir || "";
   }
   if (compressionPasswordToggle) {
     compressionPasswordToggle.checked = settingsState.compressionPasswordEnabled;
@@ -2674,6 +2776,7 @@ const applySettingsToUI = () => {
     uploadDateFormatSelect.value = settingsState.uploadDateFormat;
   }
   syncCompressionPasswordUI();
+  syncOutputDirUI();
   syncSplitArchiveUI();
   syncUploadDateUI();
   applyTranslations();
@@ -3061,9 +3164,35 @@ const loadAppVersion = async () => {
   }
 };
 
+// Reconciles the output-dir UI with the backend's persisted value, which is the
+// source of truth (an OS path the backend validates). Falls back to the
+// localStorage mirror if the backend is unavailable.
+const refreshOutputDirFromBackend = async () => {
+  if (!tauriInvoke) {
+    return;
+  }
+  try {
+    const saved = await tauriInvoke("get_output_override");
+    settingsState.outputDir = saved || "";
+    settingsState.outputDirEnabled = Boolean(saved);
+    saveSettings();
+    if (outputDirToggle) {
+      outputDirToggle.checked = settingsState.outputDirEnabled;
+    }
+    if (outputDirInput) {
+      outputDirInput.value = settingsState.outputDir;
+    }
+    syncOutputDirUI();
+    setOutputDirStatus("");
+  } catch {
+    // Keep the localStorage-mirrored values already applied by applySettingsToUI.
+  }
+};
+
 const openSettingsModal = () => {
   applySettingsToUI();
   void loadAppVersion();
+  void refreshOutputDirFromBackend();
   settingsModalOverlay?.classList.add("active");
 };
 
@@ -4768,6 +4897,84 @@ if (skipCompressionToggle) {
   skipCompressionToggle.addEventListener("change", () => {
     settingsState.skipCompression = skipCompressionToggle.checked;
     saveSettings();
+  });
+}
+
+// Commits the current output-dir field to the backend: clears the override when
+// disabled or empty, otherwise validates+saves the path. Reflects backend
+// errors (missing/unwritable folder) inline and reverts the checkbox on failure.
+const commitOutputDir = async () => {
+  if (!tauriInvoke || !outputDirToggle) {
+    return;
+  }
+  const enabled = outputDirToggle.checked;
+  const path = (outputDirInput?.value || "").trim();
+
+  if (!enabled || !path) {
+    try {
+      await tauriInvoke("clear_output_override");
+      settingsState.outputDirEnabled = enabled && Boolean(path);
+      settingsState.outputDir = enabled ? path : "";
+      saveSettings();
+      setOutputDirStatus("");
+    } catch (error) {
+      setOutputDirStatus(t("settings.outputDirError", { error }), true);
+    }
+    return;
+  }
+
+  try {
+    await tauriInvoke("set_output_override", { path });
+    settingsState.outputDirEnabled = true;
+    settingsState.outputDir = path;
+    saveSettings();
+    setOutputDirStatus(t("settings.outputDirSaved"));
+  } catch (error) {
+    // The folder doesn't exist or isn't writable; surface the reason and revert.
+    setOutputDirStatus(t("settings.outputDirError", { error }), true);
+  }
+};
+
+if (outputDirToggle) {
+  outputDirToggle.addEventListener("change", () => {
+    settingsState.outputDirEnabled = outputDirToggle.checked;
+    syncOutputDirUI();
+    saveSettings();
+    if (outputDirToggle.checked) {
+      // Focus the field so the user can type or click Browse immediately.
+      outputDirInput?.focus();
+      // Only commit if a path is already present; otherwise wait for input.
+      if ((outputDirInput?.value || "").trim()) {
+        void commitOutputDir();
+      }
+    } else {
+      void commitOutputDir();
+    }
+  });
+}
+
+if (outputDirInput) {
+  outputDirInput.addEventListener("change", () => {
+    void commitOutputDir();
+  });
+}
+
+if (outputDirBrowse) {
+  outputDirBrowse.addEventListener("click", async () => {
+    if (!tauriInvoke) {
+      return;
+    }
+    try {
+      const picked = await tauriInvoke("pick_output_folder");
+      if (picked) {
+        if (outputDirInput) {
+          outputDirInput.value = picked;
+        }
+        await commitOutputDir();
+      }
+    } catch (error) {
+      setOutputDirStatus(t("settings.outputDirError", { error }), true);
+    }
   });
 }
 

@@ -9,6 +9,7 @@ mod login_store;
 mod manifest_preflight;
 mod output_conflict;
 pub(crate) mod output_dir;
+mod output_override;
 mod appimage_integration;
 mod steam_api;
 mod steamcmd_api;
@@ -27,6 +28,9 @@ use job_staging::cleanup_orphaned_staging;
 use login_store::{delete_login_data, load_login_data, save_login_data};
 use output_conflict::{resolve_output_conflict, OutputConflictState};
 use output_dir::{get_output_folder, open_output_folder};
+use output_override::{
+    clear_output_override, get_output_override, pick_output_folder, set_output_override,
+};
 use template_metadata::{get_template_metadata, TemplateMetadataState};
 use template_store::{
     delete_profile, list_profiles, open_profiles_folder, save_profile,
@@ -134,6 +138,10 @@ pub fn run() {
             cancel_7zip,
             open_output_folder,
             get_output_folder,
+            get_output_override,
+            set_output_override,
+            clear_output_override,
+            pick_output_folder,
             save_login_data,
             load_login_data,
             delete_login_data,
