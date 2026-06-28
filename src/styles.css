@@ -226,13 +226,28 @@ button {
   opacity: 0.85;
 }
 
+.queue-item-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.queue-item-progress-label {
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 32px;
+  text-align: right;
+  opacity: 0.85;
+}
+
 .queue-item-progress {
+  flex: 1;
   height: 6px;
   background: #2a2a2a;
   border: 1px solid #444444;
   border-radius: 3px;
   overflow: hidden;
-  margin: 6px 0;
 }
 
 .queue-item-progress-fill {

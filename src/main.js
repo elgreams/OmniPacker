@@ -4585,22 +4585,24 @@ const renderQueue = () => {
     const status = document.createElement("div");
     status.className = `queue-item-status status-${job.status}`;
     let statusText = formatStatus(job.status);
-    const totalProgress = getJobTotalProgress(job);
     if (job.status === "compressing") {
-      const progress = totalProgress ?? 0;
+      // Show the compression step's own progress, not the whole-job total.
+      const progress = Number.isFinite(job.compressionProgress)
+        ? job.compressionProgress
+        : 0;
       statusText = `${statusText} ${progress}%`;
     } else if (job.status === "running" && job.downloadProgress) {
       // The running phase is really the download phase once dd:progress arrives.
+      // Show the download step's own progress and depot counter.
       const dp = job.downloadProgress;
       statusText = t("queue.status.downloading");
-      const percent = totalProgress ?? dp.jobPercent;
       if (dp.totalDepots > 0) {
-        statusText = `${statusText} ${percent}% · ${t("queue.depotCounter", {
+        statusText = `${statusText} ${dp.jobPercent}% · ${t("queue.depotCounter", {
           completed: dp.completedDepots,
           total: dp.totalDepots,
         })}`;
       } else {
-        statusText = `${statusText} ${percent}%`;
+        statusText = `${statusText} ${dp.jobPercent}%`;
       }
     }
     status.textContent = statusText;
@@ -4688,13 +4690,23 @@ const renderQueue = () => {
       (job.status === "compressing" ||
         (job.status === "running" && job.downloadProgress));
     if (showBar) {
+      const progressRow = document.createElement("div");
+      progressRow.className = "queue-item-progress-row";
+
+      const label = document.createElement("div");
+      label.className = "queue-item-progress-label";
+      label.textContent = `${totalProgressForBar}%`;
+
       const bar = document.createElement("div");
       bar.className = "queue-item-progress";
       const fill = document.createElement("div");
       fill.className = "queue-item-progress-fill";
       fill.style.width = `${totalProgressForBar}%`;
       bar.appendChild(fill);
-      row.appendChild(bar);
+
+      progressRow.appendChild(label);
+      progressRow.appendChild(bar);
+      row.appendChild(progressRow);
     }
 
     row.appendChild(meta);
