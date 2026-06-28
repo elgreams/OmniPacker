@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tauri::Manager;
 
 const LOGIN_FILE_NAME: &str = "login.dat";
 const LOGIN_PREFIX: &str = "OP1:";
@@ -13,10 +12,9 @@ pub struct LoginData {
 }
 
 fn login_file_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
-    app_handle
-        .path()
-        .resolve(LOGIN_FILE_NAME, tauri::path::BaseDirectory::AppData)
-        .map_err(|e| format!("Failed to resolve login data path: {}", e))
+    // Portable-aware: in portable mode the file lives next to the exe so saved
+    // credentials travel with the app and are never left on the host machine.
+    Ok(crate::output_dir::resolve_config_dir(app_handle)?.join(LOGIN_FILE_NAME))
 }
 
 fn ensure_parent_dir(path: &Path) -> Result<(), String> {

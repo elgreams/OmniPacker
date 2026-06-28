@@ -123,6 +123,10 @@ jobs:
           & 7z x $setup "-o$portableDir" -y | Out-Null
           Remove-Item -Recurse -Force (Join-Path $portableDir '$PLUGINSDIR') -ErrorAction SilentlyContinue
           Remove-Item -Force (Join-Path $portableDir 'uninstall.exe') -ErrorAction SilentlyContinue
+          # Drop the portable marker next to the exe so the app keeps all data
+          # (working dirs, settings, saved credentials) beside itself instead of
+          # in %AppData%. The MSI/NSIS installers do NOT include this file.
+          New-Item -ItemType File -Force -Path (Join-Path $portableDir '.portable') | Out-Null
           Compress-Archive -Path "$portableDir" -DestinationPath "release-assets/OmniPacker-$version.${{ matrix.arch }}.Windows.Portable.zip"
 
       - name: Upload release assets

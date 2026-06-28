@@ -1,19 +1,16 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
-use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
 const OVERRIDE_FILE_NAME: &str = "output_dir.txt";
 
 /// Path to the file that persists the user's custom output directory. Stored in
-/// AppData (not the localStorage settings blob) because it's an OS path the
-/// backend must validate, and it should survive a localStorage clear.
+/// the config dir (not the localStorage settings blob) because it's an OS path
+/// the backend must validate, and it should survive a localStorage clear.
+/// Portable-aware: next to the exe in portable mode, in app-data otherwise.
 fn override_file_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
-    app_handle
-        .path()
-        .resolve(OVERRIDE_FILE_NAME, tauri::path::BaseDirectory::AppData)
-        .map_err(|e| format!("Failed to resolve output override path: {e}"))
+    Ok(crate::output_dir::resolve_config_dir(app_handle)?.join(OVERRIDE_FILE_NAME))
 }
 
 /// Reads the persisted custom output directory, if one is set. Returns `None`

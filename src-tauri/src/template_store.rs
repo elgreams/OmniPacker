@@ -3,7 +3,7 @@ use serde::Serialize;
 use serde_json;
 use std::fs;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 
 /// Reserved built-in profile names. These are synthesized in the frontend and
@@ -18,13 +18,10 @@ pub struct StoredProfile {
     pub payload: TemplatePayload,
 }
 
-/// Resolves the directory that holds saved profile JSON files.
+/// Resolves the directory that holds saved profile JSON files. Portable-aware:
+/// sits next to the exe in portable mode, in app-data otherwise.
 fn get_profiles_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to resolve app data directory: {}", e))?;
-    Ok(app_data_dir.join("profiles"))
+    Ok(crate::output_dir::resolve_config_dir(app_handle)?.join("profiles"))
 }
 
 /// Sanitizes a profile name into a safe filename stem. Keeps alphanumerics,

@@ -146,35 +146,94 @@ fn open_path_appimage(path: &Path) -> Result<(), String> {
     })
 }
 
-/// Resolves the default base working directory. In a portable build this is the
-/// folder next to the executable; in a debug build (or when the portable folder
-/// isn't writable) it's the app-data directory. Used only when no custom output
-/// directory is set — see `resolve_outputs_dir` / `resolve_scratch_dir`, which
-/// layer the override on top. Previously the subfolders lived under an extra
-/// `downloads/` level, dropped to stay under Windows' MAX_PATH limit.
+/// Marker file that, when present next to the executable, forces portable mode.
+/// Portable mode keeps all data (working dirs, config, credentials) next to the
+/// exe instead of in the OS app-data directory. The Windows portable zip ships
+/// this file; the installers do not. A user can also drop it next to any copy to
+/// make that copy portable.
+const PORTABLE_MARKER: &str = ".portable";
+
+/// The directory containing the running executable, if resolvable.
+fn exe_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
+}
+
+/// Whether the given directory contains the portable marker file.
+fn dir_is_portable(dir: &Path) -> bool {
+    dir.join(PORTABLE_MARKER).is_file()
+}
+
+/// Whether this build should run in portable mode. True only when a `.portable`
+/// marker sits next to the executable. Always false in debug builds, where data
+/// belongs in app-data for dev convenience regardless of any stray marker.
+///
+/// Detection is an explicit, intentional signal (the marker) rather than the old
+/// "is the exe folder writable" heuristic, which misclassified installed builds
+/// in writable locations as portable and portable builds in read-only locations
+/// as installed — risky once credentials are routed through the same decision.
+pub fn is_portable() -> bool {
+    if cfg!(debug_assertions) {
+        return false;
+    }
+    exe_dir().map(|dir| dir_is_portable(&dir)).unwrap_or(false)
+}
+
+/// Resolves the default base working directory (outputs/scratch live here when no
+/// custom output folder is set — see `resolve_outputs_dir` / `resolve_scratch_dir`).
+///
+/// - Portable: the exe folder. If that isn't writable, fall back to app-data so a
+///   job can still run — working output is not sensitive, so a lenient fallback is
+///   acceptable here (unlike `resolve_config_dir`, which hard-fails).
+/// - Installed / debug: the app-data directory.
 pub fn resolve_base_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
     let fallback_dir = app_handle
         .path()
         .app_data_dir()
         .map_err(|err| format!("Failed to resolve app data directory: {err}"))?;
 
-    if cfg!(debug_assertions) {
-        ensure_writable_dir(&fallback_dir)?;
-        return Ok(fallback_dir);
-    }
-
-    let portable_dir = std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|parent| parent.to_path_buf()));
-
-    if let Some(dir) = portable_dir {
-        if ensure_writable_dir(&dir).is_ok() {
-            return Ok(dir);
+    if is_portable() {
+        if let Some(dir) = exe_dir() {
+            if ensure_writable_dir(&dir).is_ok() {
+                return Ok(dir);
+            }
         }
+        // Portable but the exe folder isn't writable: fall through to app-data
+        // rather than failing the job over a non-sensitive output location.
     }
 
     ensure_writable_dir(&fallback_dir)?;
     Ok(fallback_dir)
+}
+
+/// Resolves the directory that holds persistent config and credentials
+/// (`login.dat`, `profiles/`, `output_dir.txt`).
+///
+/// - Portable: the exe folder. If that isn't writable this **hard-fails** rather
+///   than silently falling back to app-data, so a portable user's saved
+///   credentials are never written to the host machine they meant to keep clean.
+/// - Installed / debug: the app-data directory (same location as before).
+pub fn resolve_config_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    if is_portable() {
+        let dir = exe_dir().ok_or_else(|| {
+            "Could not resolve the executable directory for portable mode.".to_string()
+        })?;
+        ensure_writable_dir(&dir).map_err(|err| {
+            format!(
+                "Portable mode is enabled but the program folder is not writable, \
+                 so settings/credentials cannot be saved there: {err}"
+            )
+        })?;
+        return Ok(dir);
+    }
+
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|err| format!("Failed to resolve app data directory: {err}"))?;
+    ensure_writable_dir(&app_data_dir)?;
+    Ok(app_data_dir)
 }
 
 /// Where finished `<Game>.Build.…` packages are written.
@@ -243,4 +302,43 @@ fn with_trailing_separator(path: &Path) -> PathBuf {
     let mut s = path.as_os_str().to_os_string();
     s.push(std::path::MAIN_SEPARATOR.to_string());
     PathBuf::from(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// Creates a unique empty temp directory without pulling in a test-only crate.
+    fn unique_temp_dir(tag: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("omnipacker_test_{tag}_{nanos}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn dir_is_portable_only_when_marker_present() {
+        let dir = unique_temp_dir("marker");
+        assert!(!dir_is_portable(&dir), "no marker => not portable");
+
+        std::fs::write(dir.join(PORTABLE_MARKER), b"").unwrap();
+        assert!(dir_is_portable(&dir), "marker file => portable");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn dir_is_portable_ignores_marker_as_directory() {
+        // A directory named `.portable` must not be treated as the marker file,
+        // so an unrelated folder can't accidentally flip portable mode on.
+        let dir = unique_temp_dir("markerdir");
+        std::fs::create_dir_all(dir.join(PORTABLE_MARKER)).unwrap();
+        assert!(!dir_is_portable(&dir), "marker as dir => not portable");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
