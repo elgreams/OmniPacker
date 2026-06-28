@@ -899,9 +899,21 @@ fn compress_output(
     Ok(archive_path)
 }
 
-/// Builds DepotDownloader command-line arguments from job metadata
-fn build_depot_args(job: &JobMetadata) -> Result<Vec<String>, String> {
+/// Builds DepotDownloader command-line arguments from job metadata.
+///
+/// `config_dir`, when provided, is passed as `-config-dir` so the fork stores its
+/// account file (the saved login/refresh token) there instead of in the OS
+/// isolated-storage location — keeping it in OmniPacker's portable-aware data
+/// folder alongside `login.dat`.
+fn build_depot_args(job: &JobMetadata, config_dir: Option<&str>) -> Result<Vec<String>, String> {
     let mut args = Vec::new();
+
+    if let Some(dir) = config_dir {
+        if !dir.is_empty() {
+            args.push("-config-dir".to_string());
+            args.push(dir.to_string());
+        }
+    }
 
     if !job.app_id.is_empty() && job.app_id != "unknown" {
         args.push("-app".to_string());
@@ -1084,7 +1096,14 @@ fn run_depotdownloader_worker(
         &job_id,
     );
 
-    let args = match build_depot_args(&job) {
+    // Keep the saved login token in OmniPacker's portable-aware config dir (next
+    // to login.dat) rather than the fork's default isolated-storage location. A
+    // failure here is non-fatal: omit -config-dir and let the fork fall back.
+    let config_dir = crate::output_dir::resolve_config_dir(&app_handle)
+        .ok()
+        .map(|dir| dir.to_string_lossy().into_owned());
+
+    let args = match build_depot_args(&job, config_dir.as_deref()) {
         Ok(args) => args,
         Err(err) => {
             emit_log(
@@ -1729,7 +1748,11 @@ fn run_preflight_before_download(
     }
 
     let dd_path = resolve_depotdownloader_path(app_handle)?;
-    let mut args = build_preflight_args(job)?;
+    // Point preflight at the same portable-aware account store as the main run.
+    let config_dir = crate::output_dir::resolve_config_dir(app_handle)
+        .ok()
+        .map(|dir| dir.to_string_lossy().into_owned());
+    let mut args = build_preflight_args(job, config_dir.as_deref())?;
     args.push("-manifest-only".to_string());
 
     emit_log(

@@ -31,9 +31,24 @@ pub struct PreflightResult {
     pub raw_output: Vec<String>,
 }
 
-/// Builds command-line arguments for preflight (similar to regular run but without download-specific options)
-pub fn build_preflight_args(job: &JobMetadata) -> Result<Vec<String>, String> {
+/// Builds command-line arguments for preflight (similar to regular run but
+/// without download-specific options).
+///
+/// `config_dir`, when provided, is forwarded as `-config-dir` so preflight reads
+/// and writes the same account file (saved login token) as the main download,
+/// keeping it in OmniPacker's portable-aware data folder.
+pub fn build_preflight_args(
+    job: &JobMetadata,
+    config_dir: Option<&str>,
+) -> Result<Vec<String>, String> {
     let mut args = Vec::new();
+
+    if let Some(dir) = config_dir {
+        if !dir.is_empty() {
+            args.push("-config-dir".to_string());
+            args.push(dir.to_string());
+        }
+    }
 
     if !job.app_id.is_empty() && job.app_id != "unknown" {
         args.push("-app".to_string());
