@@ -200,8 +200,10 @@ const translations = {
     "queue.atBottom": "Already at bottom",
     "queue.appId": "AppID {{appId}}",
     "queue.meta": "Branch: {{branch}} • OS: {{os}}",
+    "queue.depotCounter": "{{completed}}/{{total}} depots",
     "queue.status.queued": "queued",
     "queue.status.running": "running",
+    "queue.status.downloading": "Downloading",
     "queue.status.compressing": "compressing",
     "queue.status.done": "done",
     "queue.status.failed": "failed",
@@ -425,8 +427,10 @@ const translations = {
     "queue.atBottom": "Ya está abajo",
     "queue.appId": "AppID {{appId}}",
     "queue.meta": "Rama: {{branch}} • SO: {{os}}",
+    "queue.depotCounter": "{{completed}}/{{total}} depósitos",
     "queue.status.queued": "en cola",
     "queue.status.running": "en ejecución",
+    "queue.status.downloading": "Descargando",
     "queue.status.compressing": "comprimiendo",
     "queue.status.done": "completado",
     "queue.status.failed": "fallido",
@@ -657,8 +661,10 @@ const translations = {
     "queue.atBottom": "Déjà en bas",
     "queue.appId": "AppID {{appId}}",
     "queue.meta": "Branche : {{branch}} • OS : {{os}}",
+    "queue.depotCounter": "{{completed}}/{{total}} dépôts",
     "queue.status.queued": "en file",
     "queue.status.running": "en cours",
+    "queue.status.downloading": "Téléchargement",
     "queue.status.compressing": "compression",
     "queue.status.done": "terminé",
     "queue.status.failed": "échoué",
@@ -890,8 +896,10 @@ const translations = {
     "queue.atBottom": "Bereits ganz unten",
     "queue.appId": "AppID {{appId}}",
     "queue.meta": "Branch: {{branch}} • OS: {{os}}",
+    "queue.depotCounter": "{{completed}}/{{total}} Depots",
     "queue.status.queued": "in Warteschlange",
     "queue.status.running": "läuft",
+    "queue.status.downloading": "Wird heruntergeladen",
     "queue.status.compressing": "komprimieren",
     "queue.status.done": "fertig",
     "queue.status.failed": "fehlgeschlagen",
@@ -1122,8 +1130,10 @@ const translations = {
     "queue.atBottom": "Уже внизу",
     "queue.appId": "AppID {{appId}}",
     "queue.meta": "Ветка: {{branch}} • ОС: {{os}}",
+    "queue.depotCounter": "{{completed}}/{{total}} депо",
     "queue.status.queued": "в очереди",
     "queue.status.running": "выполняется",
+    "queue.status.downloading": "Загрузка",
     "queue.status.compressing": "сжатие",
     "queue.status.done": "готово",
     "queue.status.failed": "ошибка",
@@ -1385,18 +1395,19 @@ const TEMPLATE_SINGLE_FIELDS = [
   "branch",
   "build_datetime_utc",
   "build_id",
-  // app_id/game_description/website come from job metadata; username comes from
-  // the global "Uploader name" setting.
+  // app_id/game_description/website come from job metadata.
   "app_id",
   "game_description",
   "website",
-  "username",
-  "upload_date",
   // Scalar primary-depot tokens, usable in single-render blocks (title/version/
   // free text). The per-depot {{depot_id}}/{{manifest_id}} only resolve inside
   // the looped Depot List line; these point at the primary depot specifically.
   "primary_depot_id",
   "primary_manifest_id",
+  // Settings-sourced tokens kept last so the Settings-driven chips appear at the
+  // end of the chip row. username comes from the "Uploader name" setting.
+  "username",
+  "upload_date",
 ];
 const TEMPLATE_DEPOT_FIELDS = ["depot_id", "depot_name", "manifest_id"];
 
@@ -2884,6 +2895,11 @@ const createJob = ({ appId, os, branch, branchPassword, username, password, qrEn
     status: "queued",
     logs: [],
     compressionProgress: null,
+    // Whole-job download progress from dd:progress. null until the first event.
+    downloadProgress: null, // { jobPercent, completedDepots, totalDepots, depotPercent }
+    // Snapshot of whether this job will compress, taken at start time so the
+    // total progress bar weighting is stable even if the global setting changes.
+    willCompress: true,
     qrText: null,
     qrCaptureActive: false,
     qrCaptureLines: [],
@@ -3270,6 +3286,7 @@ const resetJobForRetry = (job) => {
   job.backendJobId = null;
   job.stagingDir = null;
   job.compressionProgress = null;
+  job.downloadProgress = null;
   job.qrText = null;
   job.qrCaptureActive = false;
   job.qrCaptureLines = [];
@@ -3573,6 +3590,55 @@ const setCompressionProgress = (job, percent) => {
       renderQueue();
     }
   }
+};
+
+const setDownloadProgress = (job, payload) => {
+  const jobPercent = Number(payload?.jobPercent);
+  if (!Number.isFinite(jobPercent) || jobPercent < 0 || jobPercent > 100) {
+    return;
+  }
+  const next = {
+    jobPercent,
+    completedDepots: Number(payload?.completedDepots) || 0,
+    totalDepots: Number(payload?.totalDepots) || 0,
+    depotPercent: Number(payload?.depotPercent) || 0,
+  };
+  const prev = job.downloadProgress;
+  if (
+    !prev ||
+    prev.jobPercent !== next.jobPercent ||
+    prev.completedDepots !== next.completedDepots ||
+    prev.totalDepots !== next.totalDepots
+  ) {
+    job.downloadProgress = next;
+    if (job.status === "running") {
+      renderQueue();
+    }
+  }
+};
+
+// Whole-job progress (0-100) spanning both phases. When the job compresses,
+// download fills the first half and compression the second half; otherwise the
+// download percent is the entire bar. Returns null when nothing is known yet.
+const getJobTotalProgress = (job) => {
+  const downloadPercent = Number.isFinite(job.downloadProgress?.jobPercent)
+    ? job.downloadProgress.jobPercent
+    : null;
+  const compressionPercent = Number.isFinite(job.compressionProgress)
+    ? job.compressionProgress
+    : null;
+
+  if (!job.willCompress) {
+    return downloadPercent;
+  }
+
+  if (job.status === "compressing") {
+    return Math.round(50 + (compressionPercent ?? 0) / 2);
+  }
+  if (downloadPercent === null) {
+    return null;
+  }
+  return Math.round(downloadPercent / 2);
 };
 
 const setActiveTab = (name) => {
@@ -4091,6 +4157,17 @@ if (tauriEvent?.listen) {
     openOutputConflictModal(payload);
   });
 
+  // Listen for DepotDownloader download progress
+  tauriEvent.listen("dd:progress", (event) => {
+    const payload = event.payload ?? {};
+    const job = resolveEventJob(payload);
+    if (!job) {
+      warnOrphanEvent("dd:progress", payload);
+      return;
+    }
+    setDownloadProgress(job, payload);
+  });
+
   // Listen for 7-Zip logs during compression
   tauriEvent.listen("7z:log", (event) => {
     const job = getRunningJob();
@@ -4211,6 +4288,9 @@ const startJob = async () => {
 
   syncAuthFromForm(jobToRun);
   applyRememberedAuth(jobToRun);
+  // Snapshot the compression decision so the total progress bar weights the
+  // download/compression split consistently for this job.
+  jobToRun.willCompress = !settingsState.skipCompression;
   jobState.runningJobId = jobToRun.id;
   jobState.selectedJobId = jobToRun.id;
   renderAll();
@@ -4505,11 +4585,23 @@ const renderQueue = () => {
     const status = document.createElement("div");
     status.className = `queue-item-status status-${job.status}`;
     let statusText = formatStatus(job.status);
+    const totalProgress = getJobTotalProgress(job);
     if (job.status === "compressing") {
-      const progress = Number.isFinite(job.compressionProgress)
-        ? job.compressionProgress
-        : 0;
+      const progress = totalProgress ?? 0;
       statusText = `${statusText} ${progress}%`;
+    } else if (job.status === "running" && job.downloadProgress) {
+      // The running phase is really the download phase once dd:progress arrives.
+      const dp = job.downloadProgress;
+      statusText = t("queue.status.downloading");
+      const percent = totalProgress ?? dp.jobPercent;
+      if (dp.totalDepots > 0) {
+        statusText = `${statusText} ${percent}% · ${t("queue.depotCounter", {
+          completed: dp.completedDepots,
+          total: dp.totalDepots,
+        })}`;
+      } else {
+        statusText = `${statusText} ${percent}%`;
+      }
     }
     status.textContent = statusText;
 
@@ -4589,6 +4681,22 @@ const renderQueue = () => {
 
     row.appendChild(header);
     row.appendChild(top);
+
+    const totalProgressForBar = getJobTotalProgress(job);
+    const showBar =
+      totalProgressForBar !== null &&
+      (job.status === "compressing" ||
+        (job.status === "running" && job.downloadProgress));
+    if (showBar) {
+      const bar = document.createElement("div");
+      bar.className = "queue-item-progress";
+      const fill = document.createElement("div");
+      fill.className = "queue-item-progress-fill";
+      fill.style.width = `${totalProgressForBar}%`;
+      bar.appendChild(fill);
+      row.appendChild(bar);
+    }
+
     row.appendChild(meta);
 
     row.addEventListener("click", () => {

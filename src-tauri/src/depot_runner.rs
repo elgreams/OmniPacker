@@ -94,6 +94,97 @@ struct RunningJobState {
     depot_dlcappids: std::collections::HashMap<String, String>,
     // Join handles for log reader threads (to ensure all logs are parsed before metadata derivation)
     log_reader_threads: Option<(thread::JoinHandle<()>, thread::JoinHandle<()>)>,
+    // Download-progress tracking. DepotDownloader announces every depot up front
+    // with "Downloading depot <id> manifest" (phase 1), then downloads each in
+    // turn printing per-file "NN.NN%" lines and a "Depot <id> - Downloaded ..."
+    // completion line (phase 2). We count announced depots as the denominator,
+    // completed depots + the current depot's percent as the numerator, to drive
+    // a whole-job progress bar. See progress::DownloadProgress.
+    progress: DownloadProgress,
+}
+
+/// Whole-job download progress derived from DepotDownloader stdout.
+#[derive(Default)]
+struct DownloadProgress {
+    /// Distinct depot IDs announced via "Downloading depot <id> manifest".
+    announced_depots: std::collections::HashSet<String>,
+    /// Number of depots that printed their "Depot <id> - Downloaded ..." line.
+    completed_depots: usize,
+    /// Percent (0..=100) of the depot currently downloading.
+    current_depot_percent: u8,
+    /// Last whole-job percent emitted, to avoid spamming identical events.
+    last_emitted_percent: Option<u8>,
+}
+
+impl DownloadProgress {
+    fn reset(&mut self) {
+        self.announced_depots.clear();
+        self.completed_depots = 0;
+        self.current_depot_percent = 0;
+        self.last_emitted_percent = None;
+    }
+
+    /// Whole-job percent: completed depots count as 100 each, plus the in-flight
+    /// depot's percent, divided by the total announced. Returns None until at
+    /// least one depot has been announced (denominator unknown).
+    fn job_percent(&self) -> Option<u8> {
+        let total = self.announced_depots.len();
+        if total == 0 {
+            return None;
+        }
+        let numerator = self.completed_depots * 100 + self.current_depot_percent as usize;
+        let pct = (numerator / total).min(100);
+        Some(pct as u8)
+    }
+
+    /// Applies a single stdout line to the progress state. Returns true when the
+    /// state changed (so the caller may emit), and a second flag that is true
+    /// when the line marked a depot complete (so the caller always emits to
+    /// advance the N/M counter even if the percent is unchanged). Pure: holds no
+    /// AppHandle, so it is unit-testable.
+    fn apply_line(&mut self, line: &str) -> (bool, bool) {
+        static MANIFEST_ANNOUNCE_RE: OnceLock<Regex> = OnceLock::new();
+        static DEPOT_DONE_RE: OnceLock<Regex> = OnceLock::new();
+        static PERCENT_RE: OnceLock<Regex> = OnceLock::new();
+
+        let manifest_announce = MANIFEST_ANNOUNCE_RE.get_or_init(|| {
+            Regex::new(r"(?i)Downloading\s+depot\s+(\d+)\s+manifest").unwrap()
+        });
+        let depot_done = DEPOT_DONE_RE.get_or_init(|| {
+            Regex::new(r"(?i)Depot\s+(\d+)\s*[-–]\s*Downloaded\s+\d+\s+bytes").unwrap()
+        });
+        // Leading, optionally space-padded "NN.NN%" at the start of the line.
+        let percent = PERCENT_RE
+            .get_or_init(|| Regex::new(r"^\s*(\d{1,3})(?:\.\d+)?%").unwrap());
+
+        if let Some(caps) = manifest_announce.captures(line) {
+            // Phase 1: a depot was announced. Counts toward the denominator.
+            let depot_id = caps.get(1).unwrap().as_str().to_string();
+            let inserted = self.announced_depots.insert(depot_id);
+            (inserted, false)
+        } else if depot_done.captures(line).is_some() {
+            // A depot finished. Bump completed and reset the in-flight percent so
+            // the next depot starts its bar segment from 0.
+            let total = self.announced_depots.len().max(1);
+            if self.completed_depots < total {
+                self.completed_depots += 1;
+            }
+            self.current_depot_percent = 0;
+            (true, true)
+        } else if let Some(caps) = percent.captures(line) {
+            // Phase 2: per-file percent within the current depot.
+            if let Ok(p) = caps.get(1).unwrap().as_str().parse::<u8>() {
+                let p = p.min(100);
+                if p != self.current_depot_percent {
+                    self.current_depot_percent = p;
+                    return (true, false);
+                }
+            }
+            (false, false)
+        } else {
+            (false, false)
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -116,6 +207,7 @@ impl DepotRunnerState {
                 depot_names: std::collections::HashMap::new(),
                 depot_dlcappids: std::collections::HashMap::new(),
                 log_reader_threads: None,
+                progress: DownloadProgress::default(),
             })),
         }
     }
@@ -154,6 +246,20 @@ struct StatusPayload {
 struct LogPayload {
     stream: String,
     line: String,
+    job_id: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProgressPayload {
+    /// Whole-job download percent (0..=100).
+    job_percent: u8,
+    /// Depots finished so far.
+    completed_depots: usize,
+    /// Total depots announced for this job.
+    total_depots: usize,
+    /// Percent of the depot currently downloading (0..=100).
+    depot_percent: u8,
     job_id: String,
 }
 
@@ -880,6 +986,7 @@ pub fn run_depotdownloader(
         guard.manifest_timestamps.clear();
         guard.depot_dlcappids.clear();
         guard.last_depot_mentioned = None;
+        guard.progress.reset();
 
         let job_id = generate_job_id();
         guard.job_id = Some(job_id.clone());
@@ -1538,6 +1645,50 @@ fn emit_log(app_handle: &AppHandle, stream: &str, line: &str, job_id: &str) {
     }
 }
 
+/// Parses a single DepotDownloader stdout line for download-progress signals and
+/// emits a `dd:progress` event when the whole-job percent changes.
+///
+/// Recognized signals (see DownloadProgress):
+/// - `Downloading depot <id> manifest` — phase 1, announces a depot (denominator)
+/// - `Depot <id> - Downloaded <n> bytes` — a depot finished
+/// - `<NN.NN>% <path>` — per-file progress within the current depot
+///
+/// Additive and self-contained: it does not interfere with the metadata parser
+/// in `maybe_store_build_datetime`.
+fn maybe_update_progress(app_handle: &AppHandle, line: &str, job_id: &str) {
+    let state = app_handle.state::<DepotRunnerState>();
+    let Ok(mut guard) = state.inner.lock() else {
+        return;
+    };
+    if guard.job_id.as_deref() != Some(job_id) {
+        return;
+    }
+
+    let (changed, depot_completed) = guard.progress.apply_line(line);
+    if !changed {
+        return;
+    }
+
+    let Some(job_percent) = guard.progress.job_percent() else {
+        return;
+    };
+    // Skip identical-percent spam, but always emit on a depot-completion so the
+    // N/M counter advances even when the percent is unchanged.
+    if guard.progress.last_emitted_percent == Some(job_percent) && !depot_completed {
+        return;
+    }
+    guard.progress.last_emitted_percent = Some(job_percent);
+    let payload = ProgressPayload {
+        job_percent,
+        completed_depots: guard.progress.completed_depots,
+        total_depots: guard.progress.announced_depots.len(),
+        depot_percent: guard.progress.current_depot_percent,
+        job_id: job_id.to_string(),
+    };
+    drop(guard);
+    let _ = app_handle.emit("dd:progress", payload);
+}
+
 fn clear_runner_state(state_handle: &Arc<Mutex<RunningJobState>>, job_id: &str) {
     if let Ok(mut guard) = state_handle.lock() {
         if guard.job_id.as_deref() == Some(job_id) {
@@ -1797,6 +1948,7 @@ fn spawn_log_reader(
                 debug_log!(log, "[DECODED] {line}");
                 emit_log(&app_handle, &stream_name, &line, &job_id);
                 maybe_store_build_datetime(&app_handle, &line, &job_id);
+                maybe_update_progress(&app_handle, &line, &job_id);
             }
 
             if !prompt_emitted
@@ -2185,7 +2337,66 @@ fn is_executable(path: &PathBuf) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::map_os_selection;
+    use super::{map_os_selection, DownloadProgress};
+
+    #[test]
+    fn progress_unknown_until_a_depot_is_announced() {
+        let mut p = DownloadProgress::default();
+        // A stray percent line before any manifest announce: no denominator yet.
+        let (changed, _) = p.apply_line(" 50.00% depots/x/file");
+        assert!(changed); // percent recorded
+        assert_eq!(p.job_percent(), None);
+    }
+
+    #[test]
+    fn progress_counts_announced_depots_as_denominator() {
+        let mut p = DownloadProgress::default();
+        p.apply_line("Downloading depot 228984 manifest 111");
+        p.apply_line("Downloading depot 2379781 manifest 222");
+        // Re-announcing the same depot must not double-count.
+        let (changed, _) = p.apply_line("Downloading depot 228984 manifest 111");
+        assert!(!changed);
+        assert_eq!(p.announced_depots.len(), 2);
+        // Nothing downloaded yet -> 0%.
+        assert_eq!(p.job_percent(), Some(0));
+    }
+
+    #[test]
+    fn progress_whole_job_percent_across_two_depots() {
+        let mut p = DownloadProgress::default();
+        p.apply_line("Downloading depot 228984 manifest 111");
+        p.apply_line("Downloading depot 2379781 manifest 222");
+
+        // First depot at 50% -> (0*100 + 50)/2 = 25.
+        p.apply_line(" 50.00% depots/228984/file");
+        assert_eq!(p.job_percent(), Some(25));
+
+        // First depot done -> (1*100 + 0)/2 = 50, and percent resets.
+        let (_, completed) = p.apply_line("Depot 228984 - Downloaded 13436144 bytes (13742505 bytes uncompressed)");
+        assert!(completed);
+        assert_eq!(p.current_depot_percent, 0);
+        assert_eq!(p.job_percent(), Some(50));
+
+        // Second depot at 80% -> (1*100 + 80)/2 = 90.
+        p.apply_line(" 80.00% depots/2379781/file");
+        assert_eq!(p.job_percent(), Some(90));
+
+        // Second depot done -> (2*100)/2 = 100.
+        p.apply_line("Depot 2379781 - Downloaded 60189696 bytes (66662933 bytes uncompressed)");
+        assert_eq!(p.completed_depots, 2);
+        assert_eq!(p.job_percent(), Some(100));
+    }
+
+    #[test]
+    fn progress_completed_never_exceeds_total() {
+        let mut p = DownloadProgress::default();
+        p.apply_line("Downloading depot 228984 manifest 111");
+        // Two completion lines for the single known depot: completed is clamped.
+        p.apply_line("Depot 228984 - Downloaded 1 bytes (1 bytes uncompressed)");
+        p.apply_line("Depot 228984 - Downloaded 1 bytes (1 bytes uncompressed)");
+        assert_eq!(p.completed_depots, 1);
+        assert_eq!(p.job_percent(), Some(100));
+    }
 
     #[test]
     fn os_selection_maps_each_arch() {

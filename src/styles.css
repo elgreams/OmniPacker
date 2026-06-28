@@ -226,6 +226,21 @@ button {
   opacity: 0.85;
 }
 
+.queue-item-progress {
+  height: 6px;
+  background: #2a2a2a;
+  border: 1px solid #444444;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.queue-item-progress-fill {
+  height: 100%;
+  background: #f4d03f;
+  transition: width 0.2s ease;
+}
+
 .queue-item-status {
   font-weight: 600;
   text-transform: uppercase;
