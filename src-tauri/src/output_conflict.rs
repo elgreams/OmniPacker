@@ -2,7 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{mpsc, Mutex};
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
+
+/// Upper bound on how long finalization waits for the user to answer the
+/// output-conflict prompt. Generous because a user may legitimately leave the
+/// dialog open for a while, but finite so a lost prompt (webview reloaded,
+/// event dropped) can no longer park the job's monitor thread forever.
+const CONFLICT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -76,9 +83,27 @@ pub fn request_output_conflict_resolution(
         return Err(format!("Failed to emit output conflict prompt: {err}"));
     }
 
-    receiver
-        .recv()
-        .map_err(|_| "Output conflict resolution channel closed".to_string())
+    let choice = receiver.recv_timeout(CONFLICT_RESPONSE_TIMEOUT);
+
+    // On timeout (or a closed channel), remove the pending sender so a late
+    // resolve_output_conflict for this job gets a clean "no pending conflict"
+    // error instead of sending into a dropped receiver.
+    if choice.is_err() {
+        let state = app_handle.state::<OutputConflictState>();
+        let guard = state.pending.lock();
+        if let Ok(mut pending) = guard {
+            pending.remove(job_id);
+        }
+    }
+
+    choice.map_err(|err| match err {
+        mpsc::RecvTimeoutError::Timeout => {
+            "Output conflict prompt timed out without a response. Job cancelled.".to_string()
+        }
+        mpsc::RecvTimeoutError::Disconnected => {
+            "Output conflict resolution channel closed".to_string()
+        }
+    })
 }
 
 #[tauri::command]

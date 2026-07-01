@@ -103,6 +103,23 @@ struct RunningJobState {
     progress: DownloadProgress,
 }
 
+impl RunningJobState {
+    /// Clears every per-job parse accumulator. MUST be the single reset used by
+    /// job start, cancel, and cleanup: the previous ad-hoc per-site clearing
+    /// drifted (e.g. `depot_names` was never cleared anywhere), letting depot
+    /// names parsed from one job's output leak into the next job's metadata.
+    fn reset_parse_state(&mut self) {
+        self.build_datetime_utc = None;
+        self.depot_timestamps.clear();
+        self.manifest_to_depot.clear();
+        self.manifest_timestamps.clear();
+        self.depot_names.clear();
+        self.depot_dlcappids.clear();
+        self.last_depot_mentioned = None;
+        self.progress.reset();
+    }
+}
+
 /// Whole-job download progress derived from DepotDownloader stdout.
 #[derive(Default)]
 struct DownloadProgress {
@@ -992,13 +1009,7 @@ pub fn run_depotdownloader(
         if guard.child.is_some() {
             return Err("DepotDownloader is already running".to_string());
         }
-        guard.build_datetime_utc = None;
-        guard.depot_timestamps.clear();
-        guard.manifest_to_depot.clear();
-        guard.manifest_timestamps.clear();
-        guard.depot_dlcappids.clear();
-        guard.last_depot_mentioned = None;
-        guard.progress.reset();
+        guard.reset_parse_state();
 
         let job_id = generate_job_id();
         guard.job_id = Some(job_id.clone());
@@ -1563,6 +1574,17 @@ pub fn cancel_depotdownloader(
         .unwrap_or_else(|| "unknown".to_string());
 
     let Some(child) = guard.child.as_mut() else {
+        // No child process. If a job_id is still set, the download finished and
+        // the job is in its post-download phase (metadata derivation /
+        // finalization / compression dispatch). Say so instead of the
+        // misleading "not running", so the frontend's cancel log explains why
+        // nothing was cancelled. (Compression itself is cancelled via
+        // cancel_7zip; the frontend routes on the `compressing` status.)
+        if guard.job_id.is_some() {
+            return Err(
+                "Job is finalizing and cannot be cancelled at this stage.".to_string(),
+            );
+        }
         return Err("DepotDownloader is not running".to_string());
     };
 
@@ -1577,12 +1599,7 @@ pub fn cancel_depotdownloader(
     guard.child = None;
     guard.stdin = None;
     guard.job_id = None;
-    guard.build_datetime_utc = None;
-    guard.depot_timestamps.clear();
-    guard.manifest_to_depot.clear();
-    guard.manifest_timestamps.clear();
-    guard.depot_dlcappids.clear();
-    guard.last_depot_mentioned = None;
+    guard.reset_parse_state();
 
     // Emit "cancelled" (not "exited") so the frontend halts the whole queue
     // rather than auto-advancing to the next job as it does on a normal exit.
@@ -1713,11 +1730,7 @@ fn clear_runner_state(state_handle: &Arc<Mutex<RunningJobState>>, job_id: &str) 
         if guard.job_id.as_deref() == Some(job_id) {
             guard.job_id = None;
             guard.stdin = None;
-            guard.build_datetime_utc = None;
-            guard.depot_timestamps.clear();
-            guard.manifest_to_depot.clear();
-            guard.depot_dlcappids.clear();
-            guard.last_depot_mentioned = None;
+            guard.reset_parse_state();
         }
     }
 }
@@ -2360,7 +2373,37 @@ fn is_executable(path: &PathBuf) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_os_selection, DownloadProgress};
+    use super::{map_os_selection, DepotRunnerState, DownloadProgress};
+
+    #[test]
+    fn reset_parse_state_clears_every_accumulator() {
+        // Regression: depot_names (and manifest_timestamps) were never cleared
+        // between jobs, so names parsed from job N's output could leak into
+        // job N+1's metadata derivation via the naming fallback ladder.
+        let state = DepotRunnerState::new();
+        {
+            let mut guard = state.inner.lock().unwrap();
+            guard.build_datetime_utc = Some(chrono::Utc::now());
+            guard.depot_timestamps.insert("1".into(), chrono::Utc::now());
+            guard.manifest_to_depot.insert("m1".into(), "1".into());
+            guard.manifest_timestamps.insert("m1".into(), chrono::Utc::now());
+            guard.depot_names.insert("1".into(), "Stale Name".into());
+            guard.depot_dlcappids.insert("1".into(), "42".into());
+            guard.last_depot_mentioned = Some("1".into());
+            guard.progress.apply_line("Downloading depot 1 manifest 111");
+
+            guard.reset_parse_state();
+
+            assert!(guard.build_datetime_utc.is_none());
+            assert!(guard.depot_timestamps.is_empty());
+            assert!(guard.manifest_to_depot.is_empty());
+            assert!(guard.manifest_timestamps.is_empty());
+            assert!(guard.depot_names.is_empty(), "depot_names must not leak across jobs");
+            assert!(guard.depot_dlcappids.is_empty());
+            assert!(guard.last_depot_mentioned.is_none());
+            assert_eq!(guard.progress.job_percent(), None, "progress must reset");
+        }
+    }
 
     #[test]
     fn progress_unknown_until_a_depot_is_announced() {

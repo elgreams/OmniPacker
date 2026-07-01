@@ -36,7 +36,7 @@ use template_store::{
     delete_profile, list_profiles, open_profiles_folder, save_profile,
 };
 use update_check::{check_for_update, get_app_version, open_external_url};
-use zip_runner::{cancel_7zip, run_7zip, SevenZipRunnerState};
+use zip_runner::{cancel_7zip, SevenZipRunnerState};
 use std::sync::OnceLock;
 use tauri::Manager;
 
@@ -134,7 +134,6 @@ pub fn run() {
             run_depotdownloader,
             cancel_depotdownloader,
             submit_steam_guard_code,
-            run_7zip,
             cancel_7zip,
             open_output_folder,
             get_output_folder,
