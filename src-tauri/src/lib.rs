@@ -25,7 +25,10 @@ use depot_runner::{
     cancel_depotdownloader, run_depotdownloader, submit_steam_guard_code, DepotRunnerState,
 };
 use job_staging::cleanup_orphaned_staging;
-use login_store::{delete_login_data, load_login_data, save_login_data};
+use login_store::{
+    delete_login_data, load_compression_password, load_login_data, save_compression_password,
+    save_login_data,
+};
 use output_conflict::{resolve_output_conflict, OutputConflictState};
 use output_dir::{get_output_folder, open_output_folder};
 use output_override::{
@@ -144,6 +147,8 @@ pub fn run() {
             save_login_data,
             load_login_data,
             delete_login_data,
+            save_compression_password,
+            load_compression_password,
             get_template_metadata,
             list_profiles,
             save_profile,

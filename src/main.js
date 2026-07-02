@@ -2519,6 +2519,10 @@ const applyTranslations = () => {
   }
 };
 
+// Compression password found in the legacy localStorage blob, held only until
+// startup migrates it into the backend store (see initCompressionPasswordStore).
+let legacyCompressionPassword = "";
+
 // Load settings from localStorage on startup
 const loadSettings = () => {
   try {
@@ -2532,7 +2536,14 @@ const loadSettings = () => {
         settingsState.compressionPasswordEnabled =
           parsed.compressionPasswordEnabled;
       }
-      if (typeof parsed.compressionPassword === "string") {
+      // Legacy migration: older builds persisted the compression password in
+      // this localStorage blob. Adopt it for this session; the async store
+      // init pushes it to the backend and rewrites the blob without it.
+      if (
+        typeof parsed.compressionPassword === "string" &&
+        parsed.compressionPassword
+      ) {
+        legacyCompressionPassword = parsed.compressionPassword;
         settingsState.compressionPassword = parsed.compressionPassword;
       }
       if (typeof parsed.customCompressionArgs === "string") {
@@ -2589,12 +2600,9 @@ const loadSettings = () => {
         settingsState.outputDir = parsed.outputDir;
       }
     }
-    if (
-      settingsState.compressionPasswordEnabled &&
-      !settingsState.compressionPassword.trim()
-    ) {
-      settingsState.compressionPasswordEnabled = false;
-    }
+    // Note: the enabled-but-empty-password sanity check happens in
+    // initCompressionPasswordStore, after the password has been fetched from
+    // the backend store (it is no longer part of this localStorage blob).
     if (
       settingsState.splitArchiveEnabled &&
       settingsState.splitSizePreset === "custom" &&
@@ -2607,13 +2615,89 @@ const loadSettings = () => {
   }
 };
 
+// Keys of settingsState that persist in localStorage. Explicit allowlist so a
+// new field never becomes silently persistent (and secrets never land here —
+// compressionPassword lives in the portable-aware backend store instead).
+const PERSISTED_SETTINGS_KEYS = [
+  "skipCompression",
+  "compressionPasswordEnabled",
+  "customCompressionArgs",
+  "splitArchiveEnabled",
+  "splitSizePreset",
+  "splitCustomSize",
+  "splitCustomUnit",
+  "defaultQrLogin",
+  "language",
+  "uploaderName",
+  "uploadDate",
+  "uploadDateUseToday",
+  "uploadDateFormat",
+  "selectedProfiles",
+  "skippedUpdateVersion",
+  "outputDirEnabled",
+  "outputDir",
+];
+
 // Save settings to localStorage
 const saveSettings = () => {
   try {
-    localStorage.setItem("omnipacker-settings", JSON.stringify(settingsState));
+    const persisted = {};
+    for (const key of PERSISTED_SETTINGS_KEYS) {
+      persisted[key] = settingsState[key];
+    }
+    localStorage.setItem("omnipacker-settings", JSON.stringify(persisted));
   } catch (e) {
     console.debug("[OmniPacker] Failed to save settings:", e);
   }
+};
+
+// The compression password is stored via the backend (portable-aware config
+// dir, same scheme as saved logins) rather than localStorage. Fire-and-forget:
+// a failed save only costs persistence, not the in-session value.
+const persistCompressionPassword = () => {
+  if (!tauriInvoke) {
+    return;
+  }
+  tauriInvoke("save_compression_password", {
+    password: settingsState.compressionPassword || "",
+  }).catch((e) => {
+    console.debug("[OmniPacker] Failed to save compression password:", e);
+  });
+};
+
+// Loads the stored compression password on startup and migrates any value
+// left in the legacy localStorage blob into the backend store (the blob is
+// rewritten without it by the saveSettings allowlist).
+const initCompressionPasswordStore = async () => {
+  if (!tauriInvoke) {
+    return;
+  }
+  try {
+    if (legacyCompressionPassword) {
+      settingsState.compressionPassword = legacyCompressionPassword;
+      legacyCompressionPassword = "";
+      persistCompressionPassword();
+      saveSettings();
+    } else {
+      const stored = await tauriInvoke("load_compression_password");
+      settingsState.compressionPassword = stored || "";
+    }
+  } catch (e) {
+    console.debug("[OmniPacker] Failed to load compression password:", e);
+  }
+  if (
+    settingsState.compressionPasswordEnabled &&
+    !settingsState.compressionPassword.trim()
+  ) {
+    settingsState.compressionPasswordEnabled = false;
+  }
+  if (compressionPasswordInput) {
+    compressionPasswordInput.value = settingsState.compressionPassword;
+  }
+  if (compressionPasswordToggle) {
+    compressionPasswordToggle.checked = settingsState.compressionPasswordEnabled;
+  }
+  syncCompressionPasswordUI();
 };
 
 // Resolves the current split settings into a 7-Zip volume-size token like
@@ -5109,7 +5193,7 @@ if (compressionPasswordToggle) {
 if (compressionPasswordInput) {
   compressionPasswordInput.addEventListener("input", () => {
     settingsState.compressionPassword = compressionPasswordInput.value;
-    saveSettings();
+    persistCompressionPassword();
   });
 }
 
@@ -5278,6 +5362,9 @@ if (checkUpdateButton) {
 loadSettings();
 applySettingsToUI();
 applyDefaultQrLogin();
+// Compression password comes from the backend store (async); also migrates
+// any password left in the legacy localStorage settings blob.
+void initCompressionPasswordStore();
 // Seed the profile library so jobs started without opening the editor can still
 // resolve their selected profiles (built-ins + saved custom profiles).
 void refreshProfileLibrary();
