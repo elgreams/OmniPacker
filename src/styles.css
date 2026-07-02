@@ -283,8 +283,16 @@ button {
   color: #d9534f;
 }
 
+.queue-item-status.status-cancelled {
+  color: #999999;
+}
+
 .queue-item.failed {
   border: 2px solid #d9534f;
+}
+
+.queue-item.cancelled {
+  border: 2px solid #777777;
 }
 
 .queue-item-top {

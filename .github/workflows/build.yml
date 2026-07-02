@@ -21,6 +21,27 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Check version sync
+        run: |
+          set -e
+          TAURI=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          CARGO=$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)
+          NPM=$(node -p "require('./package.json').version")
+          echo "tauri.conf.json=$TAURI Cargo.toml=$CARGO package.json=$NPM"
+          if [ "$TAURI" != "$CARGO" ] || [ "$TAURI" != "$NPM" ]; then
+            echo "::error::Version mismatch: tauri.conf.json=$TAURI Cargo.toml=$CARGO package.json=$NPM"
+            exit 1
+          fi
+
+      - name: Verify sidecar binary checksums
+        working-directory: src-tauri/binaries
+        run: |
+          set -e
+          sha256sum -c SHA256SUMS
+          # Also fail if a binary exists that is not listed in SHA256SUMS.
+          diff <(find . -type f ! -name SHA256SUMS | sort) \
+               <(awk '{print $2}' SHA256SUMS | sort)
+
       - name: Install dependencies (Ubuntu)
         run: |
           sudo apt-get update
