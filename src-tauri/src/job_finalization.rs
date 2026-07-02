@@ -382,7 +382,7 @@ fn transform_depots_to_steamapps(
     temp_dir: &Path,
     install_dir_name: &str,
 ) -> Result<(HashMap<String, String>, HashMap<String, String>), String> {
-    use crate::steam_api::{get_shared_depot_owner, is_shared_depot};
+    use crate::shared_depots::{get_shared_depot_install_dir, is_shared_depot};
 
     let depots_dir = staging_dir.join("depots");
     let steamapps_common_dir = temp_dir.join("steamapps").join("common");
@@ -469,15 +469,7 @@ fn transform_depots_to_steamapps(
         //   (e.g. all 228980-owned depots → "Steamworks Shared/", matching real Steam)
         // - Non-shared depots merge into the game's installdir folder
         let target_dir = if is_shared_depot(&depot_id) {
-            let owner = get_shared_depot_owner(&depot_id);
-            let shared_install_dir = match owner {
-                "228980" => "Steamworks Shared",
-                "1391110" => "SteamLinuxRuntime",
-                "1628350" => "SteamLinuxRuntime_soldier",
-                "1826330" => "SteamLinuxRuntime_sniper",
-                _ => "Steamworks Shared",
-            };
-            steamapps_common_dir.join(shared_install_dir)
+            steamapps_common_dir.join(get_shared_depot_install_dir(&depot_id))
         } else {
             steamapps_common_dir.join(install_dir_name)
         };

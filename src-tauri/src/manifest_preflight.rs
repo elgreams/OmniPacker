@@ -334,7 +334,7 @@ pub fn parse_preflight_output(lines: &[String]) -> PreflightResult {
     // Fallback: if no primary depot was detected via installdir, use first non-shared depot
     // Priority: 1) installdir detection, 2) first non-shared depot, 3) first depot
     if !depots.is_empty() && primary_depot_id.is_none() {
-        use crate::steam_api::is_shared_depot;
+        use crate::shared_depots::is_shared_depot;
         // Find first non-shared depot as fallback
         primary_depot_id = depots
             .iter()

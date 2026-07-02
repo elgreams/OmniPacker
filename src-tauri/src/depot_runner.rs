@@ -470,7 +470,7 @@ fn derive_metadata_from_download(
                 .unwrap_or_else(|| build_id.clone());
 
             // Use first NON-SHARED depot as primary
-            use crate::steam_api::is_shared_depot;
+            use crate::shared_depots::is_shared_depot;
             if primary_depot_id.is_empty() && !is_shared_depot(&depot_id) {
                 primary_depot_id = depot_id.clone();
             }
@@ -561,7 +561,7 @@ fn derive_metadata_from_download(
     //
     // All network lookups are cached and best-effort: a failure silently degrades
     // to the next-lower-priority source and never fails the job.
-    use crate::steam_api::{get_shared_depot_owner, is_shared_depot};
+    use crate::shared_depots::{get_shared_depot_owner, is_shared_depot};
 
     // Data-driven shared-depot ownership from appinfo, unioned with the hardcoded
     // list so known redists still resolve offline.
@@ -2476,5 +2476,143 @@ mod tests {
     #[test]
     fn os_selection_falls_back_to_windows_x64() {
         assert_eq!(map_os_selection("anything else"), ("windows", "64"));
+    }
+
+    // --- build_depot_args / redaction pinning tests ---
+    //
+    // These lock the exact DD argv shape and the log-redaction behavior so a
+    // refactor can't silently change auth semantics or leak a password into
+    // the emitted command-line log.
+
+    use super::{build_depot_args, redact_7z_password_args, redact_dd_password_args, JobMetadata};
+
+    fn base_job() -> JobMetadata {
+        JobMetadata {
+            app_id: "440".to_string(),
+            os: "Windows x64".to_string(),
+            branch: "public".to_string(),
+            branch_password: String::new(),
+            username: String::new(),
+            password: String::new(),
+            qr_enabled: false,
+            clear_token: false,
+            skip_compression: false,
+            compression_password_enabled: false,
+            compression_password: String::new(),
+            custom_compression_args: String::new(),
+            split_volume_size: String::new(),
+            uploader_name: String::new(),
+            upload_date: String::new(),
+            template_profiles: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn depot_args_anonymous_download_has_no_auth_args() {
+        let args = build_depot_args(&base_job(), None).unwrap();
+        assert_eq!(
+            args,
+            vec!["-app", "440", "-branch", "public", "-os", "windows", "-osarch", "64"]
+        );
+    }
+
+    #[test]
+    fn depot_args_username_password_shape() {
+        let mut job = base_job();
+        job.username = "user1".to_string();
+        job.password = "hunter2".to_string();
+        let args = build_depot_args(&job, Some("/cfg")).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "-config-dir", "/cfg",
+                "-app", "440",
+                "-branch", "public",
+                "-os", "windows",
+                "-osarch", "64",
+                "-username", "user1",
+                "-password", "hunter2",
+                "-remember-password",
+            ]
+        );
+    }
+
+    #[test]
+    fn depot_args_qr_login_never_includes_credentials() {
+        let mut job = base_job();
+        job.qr_enabled = true;
+        // Even if stale credentials are present, QR mode must not emit them.
+        job.username = "user1".to_string();
+        job.password = "hunter2".to_string();
+        job.clear_token = true;
+        let args = build_depot_args(&job, None).unwrap();
+        assert!(args.contains(&"-qr".to_string()));
+        assert!(args.contains(&"-remember-password".to_string()));
+        assert!(args.contains(&"-clear-token".to_string()));
+        assert!(!args.contains(&"-username".to_string()));
+        assert!(!args.contains(&"-password".to_string()));
+        assert!(!args.iter().any(|a| a == "hunter2"));
+    }
+
+    #[test]
+    fn depot_args_branch_password_only_for_nonpublic_branch() {
+        let mut job = base_job();
+        job.branch_password = "beta-secret".to_string();
+        // public branch: no -branchpassword even when one is set.
+        let args = build_depot_args(&job, None).unwrap();
+        assert!(!args.contains(&"-branchpassword".to_string()));
+
+        job.branch = "beta".to_string();
+        let args = build_depot_args(&job, None).unwrap();
+        let idx = args.iter().position(|a| a == "-branchpassword").unwrap();
+        assert_eq!(args[idx + 1], "beta-secret");
+    }
+
+    #[test]
+    fn depot_args_unknown_appid_and_empty_config_dir_are_omitted() {
+        let mut job = base_job();
+        job.app_id = "unknown".to_string();
+        let args = build_depot_args(&job, Some("")).unwrap();
+        assert!(!args.contains(&"-app".to_string()));
+        assert!(!args.contains(&"-config-dir".to_string()));
+    }
+
+    #[test]
+    fn dd_redaction_masks_password_and_branchpassword_values() {
+        let args: Vec<String> = [
+            "-app", "440", "-password", "hunter2", "-branchpassword", "beta-secret",
+            "-username", "user1",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let redacted = redact_dd_password_args(&args);
+        assert!(!redacted.iter().any(|a| a == "hunter2"));
+        assert!(!redacted.iter().any(|a| a == "beta-secret"));
+        // Flags, structure, and non-secret values must be preserved.
+        assert_eq!(
+            redacted,
+            vec![
+                "-app", "440", "-password", "********", "-branchpassword", "********",
+                "-username", "user1",
+            ]
+        );
+    }
+
+    #[test]
+    fn dd_redaction_handles_trailing_flag_without_value() {
+        let args: Vec<String> = ["-password"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(redact_dd_password_args(&args), vec!["-password"]);
+    }
+
+    #[test]
+    fn sevenzip_redaction_masks_inline_password() {
+        let args: Vec<String> = ["a", "-phunter2", "-v100m", "out.7z"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let redacted = redact_7z_password_args(&args);
+        assert!(!redacted.iter().any(|a| a.contains("hunter2")));
+        assert_eq!(redacted, vec!["a", "-p********", "-v100m", "out.7z"]);
     }
 }

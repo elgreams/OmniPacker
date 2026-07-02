@@ -1,0 +1,125 @@
+{
+  "comment": "Shared JS<->Rust template-renderer parity fixture. Consumed by src-tauri/src/template_renderer.rs (cargo test) and scripts/check-template-parity.mjs (node). Both renderers must produce the byte-identical `expected` string for each case. If you change the template engine, change BOTH implementations and regenerate `expected` deliberately.",
+  "metadata": {
+    "game_name": "Balatro",
+    "os": "Win64",
+    "branch": "Public",
+    "build_datetime_utc": "February 24, 2025 - 22:02:36 UTC",
+    "build_id": "18674832",
+    "app_id": "2379780",
+    "game_description": "A roguelike deckbuilder.",
+    "website": "https://www.playbalatro.com",
+    "username": "packer",
+    "upload_date": "June 25, 2026",
+    "primary_depot_id": "2379781",
+    "primary_manifest_id": "4851806656204679952",
+    "depots": [
+      {
+        "depot_id": "228989",
+        "depot_name": "Steamworks Common Redistributables",
+        "manifest_id": "7206221393165260579"
+      },
+      {
+        "depot_id": "2379781",
+        "depot_name": "Balatro",
+        "manifest_id": "4851806656204679952"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "default_template",
+      "blocks": [
+        {
+          "type": "title",
+          "config": {
+            "template": "[url=][color=white][b]{{game_name}} [{{os}}] [Branch: {{branch}}] (Clean Steam Files)[/b][/color][/url]"
+          }
+        },
+        {
+          "type": "version",
+          "config": {
+            "template": "[size=85][color=white][b]Version:[/b] [i]{{build_datetime_utc}} [Build {{build_id}}][/i][/color][/size]"
+          }
+        },
+        {
+          "type": "depot_list",
+          "config": {
+            "title": "\"[color=white]Depots & Manifests[/color]\"",
+            "lineTemplate": "{{depot_id}} - {{depot_name}} [Manifest {{manifest_id}}]",
+            "useCodeBlock": true,
+            "maxDepots": 100
+          }
+        },
+        {
+          "type": "uploaded_version",
+          "config": {
+            "template": "[color=white][b]Uploaded version:[/b] [i]{{build_datetime_utc}} [Build {{build_id}}][/i][/color]"
+          }
+        }
+      ],
+      "expected": "[url=][color=white][b]Balatro [Win64] [Branch: Public] (Clean Steam Files)[/b][/color][/url]\n[size=85][color=white][b]Version:[/b] [i]February 24, 2025 - 22:02:36 UTC [Build 18674832][/i][/color][/size]\n\n[spoiler=\"[color=white]Depots & Manifests[/color]\"]\n[code=text]228989 - Steamworks Common Redistributables [Manifest 7206221393165260579]\n2379781 - Balatro [Manifest 4851806656204679952][/code]\n[/spoiler][color=white][b]Uploaded version:[/b] [i]February 24, 2025 - 22:02:36 UTC [Build 18674832][/i][/color]"
+    },
+    {
+      "name": "crew_tokens_and_free_text",
+      "blocks": [
+        {
+          "type": "free_text",
+          "config": {
+            "text": "[img]https://steamcdn-a.akamaihd.net/steam/apps/{{app_id}}/header.jpg[/img]\n{{game_description}}\n[url]{{website}}[/url]\n{{game_name}} | {{upload_date}} < uploaded by {{username}} >"
+          }
+        },
+        {
+          "type": "advertise_omnipacker",
+          "config": {}
+        }
+      ],
+      "expected": "[img]https://steamcdn-a.akamaihd.net/steam/apps/2379780/header.jpg[/img]\nA roguelike deckbuilder.\n[url]https://www.playbalatro.com[/url]\nBalatro | June 25, 2026 < uploaded by packer >\nMade using [url=https://github.com/elgreams/OmniPacker]OmniPacker[/url]"
+    },
+    {
+      "name": "primary_tokens_in_title",
+      "blocks": [
+        {
+          "type": "title",
+          "config": {
+            "template": "Depot {{primary_depot_id}} Manifest {{primary_manifest_id}}"
+          }
+        }
+      ],
+      "expected": "Depot 2379781 Manifest 4851806656204679952"
+    },
+    {
+      "name": "depot_list_no_code_block_capped_at_one",
+      "blocks": [
+        {
+          "type": "depot_list",
+          "config": {
+            "title": "Depots",
+            "lineTemplate": "{{depot_name}}: {{manifest_id}}",
+            "useCodeBlock": false,
+            "maxDepots": 1
+          }
+        }
+      ],
+      "expected": "[spoiler=Depots]\nSteamworks Common Redistributables: 7206221393165260579\n[/spoiler]"
+    },
+    {
+      "name": "depot_list_defaults_title_and_code",
+      "blocks": [
+        {
+          "type": "depot_list",
+          "config": {
+            "lineTemplate": "{{depot_id}}"
+          }
+        },
+        {
+          "type": "version",
+          "config": {
+            "template": "v{{build_id}}"
+          }
+        }
+      ],
+      "expected": "[spoiler=Depots]\n228989\n2379781\n[/spoiler]\nv18674832"
+    }
+  ]
+}

@@ -10,6 +10,7 @@ mod manifest_preflight;
 mod output_conflict;
 pub(crate) mod output_dir;
 mod output_override;
+mod shared_depots;
 mod appimage_integration;
 mod steam_api;
 mod steamcmd_api;

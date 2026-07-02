@@ -12,7 +12,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::job_metadata::JobMetadataFile;
-use crate::steam_api::{get_shared_depot_owner, is_shared_depot};
+use crate::shared_depots::{get_shared_depot_owner, is_shared_depot};
 
 /// VDF (Valve Data Format) builder for generating properly formatted .acf files
 struct VdfBuilder {

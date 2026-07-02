@@ -3,6 +3,11 @@ import es from "./i18n/es.js";
 import fr from "./i18n/fr.js";
 import de from "./i18n/de.js";
 import ru from "./i18n/ru.js";
+import {
+  TEMPLATE_DEPOT_FIELDS,
+  TEMPLATE_SINGLE_FIELDS,
+  renderTemplateOutput as renderTemplateOutputShared,
+} from "./template_engine.js";
 
 const tabs = document.querySelectorAll(".tab");
 const panels = document.querySelectorAll(".tab-content");
@@ -236,29 +241,8 @@ const formatOsLabel = (osValue) => {
   return key ? t(key) : osValue;
 };
 
-const TEMPLATE_MAX_DEPOTS = 100;
-const TEMPLATE_MAX_LENGTH = 200000;
-const TEMPLATE_SINGLE_FIELDS = [
-  "game_name",
-  "os",
-  "branch",
-  "build_datetime_utc",
-  "build_id",
-  // app_id/game_description/website come from job metadata.
-  "app_id",
-  "game_description",
-  "website",
-  // Scalar primary-depot tokens, usable in single-render blocks (title/version/
-  // free text). The per-depot {{depot_id}}/{{manifest_id}} only resolve inside
-  // the looped Depot List line; these point at the primary depot specifically.
-  "primary_depot_id",
-  "primary_manifest_id",
-  // Settings-sourced tokens kept last so the Settings-driven chips appear at the
-  // end of the chip row. username comes from the "Uploader name" setting.
-  "username",
-  "upload_date",
-];
-const TEMPLATE_DEPOT_FIELDS = ["depot_id", "depot_name", "manifest_id"];
+// Template engine constants and the renderer itself live in
+// template_engine.js (shared with the JS↔Rust parity check).
 
 // Fields sourced from settings rather than job metadata. `username` renders
 // blank when the "Uploader name" setting is empty; the chip tooltip notes this.
@@ -283,11 +267,6 @@ const isCrewFieldPopulated = (field) => {
 // token does without leaving the editor. Keyed by field name so the chip rows
 // (built by iterating the field arrays above) can never drift from the engine.
 const templateFieldDescKey = (field) => `template.help.field.${field}`;
-
-// Canonical OmniPacker credit line. Single source of truth on the JS side;
-// the backend renderer (template_renderer.rs) has a matching constant.
-const OMNIPACKER_CREDIT =
-  "Made using [url=https://github.com/elgreams/OmniPacker]OmniPacker[/url]";
 
 // Default test metadata for template preview when no job has been run
 const TEMPLATE_DEFAULT_METADATA = {
@@ -854,153 +833,16 @@ const renderTemplateBuilder = () => {
   });
 };
 
-const renderTemplateString = (template, allowedFields, values) => {
-  const source = String(template ?? "");
-  const tokenRegex = /\{\{([^}]+)\}\}/g;
-  const tokens = [];
-  let match = tokenRegex.exec(source);
-  while (match) {
-    tokens.push(match[1].trim());
-    match = tokenRegex.exec(source);
-  }
-
-  const invalid = tokens.filter((token) => !allowedFields.includes(token));
-  if (invalid.length) {
-    const unique = [...new Set(invalid)];
-    return { error: t("template.error.invalidField", { fields: unique.join(", ") }) };
-  }
-
-  const output = source.replace(tokenRegex, (_, token) => {
-    const key = token.trim();
-    if (Object.prototype.hasOwnProperty.call(values, key)) {
-      return String(values[key] ?? "");
-    }
-    return "";
-  });
-
-  return { output };
-};
-
-const renderTemplateOutput = (blocks, metadata) => {
-  if (!metadata) {
-    return { error: t("template.error.noMetadata") };
-  }
-
-  const baseValues = {
-    game_name: metadata.game_name || "",
-    os: metadata.os || "",
-    branch: metadata.branch || "",
-    build_datetime_utc: metadata.build_datetime_utc || "",
-    build_id: metadata.build_id || "",
-    app_id: metadata.app_id || "",
-    game_description: metadata.game_description || "",
-    website: metadata.website || "",
-    // The uploader handle comes from the global "Uploader name" setting and
-    // feeds {{username}}. Blank when unset.
+// Renders the block list with the shared engine (template_engine.js), feeding
+// in the settings-sourced values ({{username}}/{{upload_date}}) and the i18n
+// error formatter. The engine itself is pure and shared with the JS↔Rust
+// parity check.
+const renderTemplateOutput = (blocks, metadata) =>
+  renderTemplateOutputShared(blocks, metadata, {
     username: settingsState.uploaderName || "",
-    // The upload date comes from the global "Upload date" setting (manual text
-    // or today's date) and feeds {{upload_date}}. Blank when unset.
-    upload_date: resolveUploadDate(),
-    // Scalar primary-depot tokens, mirroring the backend TemplateMetadata so
-    // preview matches job output.
-    primary_depot_id: metadata.primary_depot_id || "",
-    primary_manifest_id: metadata.primary_manifest_id || "",
-  };
-  const depots = Array.isArray(metadata.depots) ? metadata.depots : [];
-  const outputParts = [];
-
-  for (const block of blocks) {
-    if (block.type === "title" || block.type === "version" || block.type === "uploaded_version") {
-      const template = block.config.template || "";
-      const rendered = renderTemplateString(template, TEMPLATE_SINGLE_FIELDS, baseValues);
-      if (rendered.error) {
-        return rendered;
-      }
-      outputParts.push(rendered.output);
-      continue;
-    }
-
-    if (block.type === "free_text") {
-      const template = block.config.text || "";
-      const rendered = renderTemplateString(template, TEMPLATE_SINGLE_FIELDS, baseValues);
-      if (rendered.error) {
-        return rendered;
-      }
-      outputParts.push(rendered.output);
-      continue;
-    }
-
-    if (block.type === "advertise_omnipacker") {
-      outputParts.push(OMNIPACKER_CREDIT);
-      continue;
-    }
-
-    if (block.type === "depot_list") {
-      if (depots.length === 0) {
-        return { error: t("template.error.noDepots") };
-      }
-      if (depots.length > TEMPLATE_MAX_DEPOTS) {
-        return { error: t("template.error.depotLimit", { limit: TEMPLATE_MAX_DEPOTS }) };
-      }
-
-      const lineTemplate = block.config.lineTemplate || "";
-      const lines = [];
-      for (const depot of depots) {
-        const depotValues = {
-          depot_id: depot.depot_id || "",
-          depot_name: depot.depot_name || "",
-          manifest_id: depot.manifest_id || "",
-        };
-        const rendered = renderTemplateString(
-          lineTemplate,
-          TEMPLATE_DEPOT_FIELDS,
-          depotValues
-        );
-        if (rendered.error) {
-          return rendered;
-        }
-        lines.push(rendered.output);
-      }
-
-      const title = block.config.title || "Depots";
-      const useCode = Boolean(block.config.useCodeBlock);
-      let depotOutput = `[spoiler=${title}]\n`;
-      if (useCode) {
-        depotOutput += "[code=text]";
-      }
-      depotOutput += lines.join("\n");
-      if (useCode) {
-        depotOutput += "[/code]";
-      }
-      depotOutput += "\n[/spoiler]";
-      outputParts.push(depotOutput);
-    }
-  }
-
-  let output = "";
-  for (let i = 0; i < outputParts.length; i += 1) {
-    const current = outputParts[i];
-    const next = outputParts[i + 1];
-    const currentType = blocks[i]?.type;
-    const nextType = blocks[i + 1]?.type;
-    output += current;
-    if (next !== undefined) {
-      // Match CS.RIN-style spacing between default blocks.
-      let separator = "\n";
-      if (currentType === "version" && nextType === "depot_list") {
-        separator = "\n\n";
-      } else if (currentType === "depot_list" && nextType === "uploaded_version") {
-        separator = "";
-      }
-      output += separator;
-    }
-  }
-  if (output.length > TEMPLATE_MAX_LENGTH) {
-    return { error: t("template.error.lengthLimit", { limit: TEMPLATE_MAX_LENGTH }) };
-  }
-
-  return { output };
-};
+    uploadDate: resolveUploadDate(),
+    formatError: t,
+  });
 
 const renderTemplatePreview = () => {
   if (!templatePreviewOutput) {

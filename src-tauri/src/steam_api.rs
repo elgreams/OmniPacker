@@ -36,56 +36,6 @@ pub struct SteamAppInfo {
     pub website: Option<String>,
 }
 
-/// Depot IDs belonging to the Steamworks Common Redistributables app (228980).
-///
-/// These are the VC++ runtimes, DirectX, OpenAL and .NET redistributables that
-/// Steam installs into the shared `Steamworks Shared` folder. The full set was
-/// verified against a real `appmanifest_228980.acf` install.
-const REDIST_DEPOTS: &[&str] = &[
-    "228981", // VC++ 2005
-    "228982", // VC++ 2008
-    "228983", // VC++ 2010
-    "228984", // VC++ 2012
-    "228985", // VC++ 2013
-    "228986", // VC++ 2015
-    "228987", // OpenAL
-    "228988", // VC++ 2019
-    "228989", // VC++ 2022
-    "228990", // DirectX (Jun 2010)
-    "229006", // .NET 4.7
-];
-
-/// Checks if a depot ID is a known shared Steam depot (redistributables, runtimes, etc.)
-pub fn is_shared_depot(depot_id: &str) -> bool {
-    REDIST_DEPOTS.contains(&depot_id)
-        || matches!(
-            depot_id,
-            // Steamworks Common Redistributables app depot itself
-            "228980" |
-            // Steam Linux Runtime
-            "1391110" | "1628210" | "1826330"
-        )
-}
-
-/// Returns the owner appid for a shared depot
-///
-/// In Steam's .acf format, shared depots are listed in a `SharedDepots` section
-/// with the format: `"depot_id" "owner_appid"`
-pub fn get_shared_depot_owner(depot_id: &str) -> &'static str {
-    // All redistributables are owned by the Steamworks Common Redistributables app
-    if depot_id == "228980" || REDIST_DEPOTS.contains(&depot_id) {
-        return "228980";
-    }
-    match depot_id {
-        // Steam Linux Runtime - these are their own owners
-        "1391110" => "1391110",  // Steam Linux Runtime (base)
-        "1628210" => "1628350",  // Steam Linux Runtime - Soldier (owned by app 1628350)
-        "1826330" => "1826330",  // Steam Linux Runtime - Sniper
-        // Default to Steamworks Common Redistributables app
-        _ => "228980",
-    }
-}
-
 /// Fetches app info from Steam's public store API
 ///
 /// This uses the public endpoint which does NOT require authentication:

@@ -665,6 +665,59 @@ mod tests {
         fs::remove_dir_all(&root).ok();
     }
 
+    /// JS↔Rust parity: renders every case in tests/template_parity.json and
+    /// asserts byte-identical output with the fixture's `expected` strings.
+    /// The JS side (scripts/check-template-parity.mjs) runs the same fixture
+    /// against src/template_engine.js, so if both sides pass, the two renderer
+    /// implementations agree. If you change the engine, change BOTH and update
+    /// the fixture deliberately.
+    #[test]
+    fn test_js_rust_template_parity_fixture() {
+        let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tests/template_parity.json");
+        let raw = fs::read_to_string(&fixture_path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", fixture_path.display()));
+        let fixture: serde_json::Value = serde_json::from_str(&raw).unwrap();
+
+        let m = &fixture["metadata"];
+        let s = |key: &str| m[key].as_str().unwrap().to_string();
+        let metadata = TemplateMetadata {
+            game_name: s("game_name"),
+            os: s("os"),
+            branch: s("branch"),
+            build_datetime_utc: s("build_datetime_utc"),
+            build_id: s("build_id"),
+            app_id: s("app_id"),
+            game_description: s("game_description"),
+            website: s("website"),
+            username: s("username"),
+            upload_date: s("upload_date"),
+            primary_depot_id: s("primary_depot_id"),
+            primary_manifest_id: s("primary_manifest_id"),
+            depots: m["depots"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|d| TemplateDepot {
+                    depot_id: d["depot_id"].as_str().unwrap().to_string(),
+                    depot_name: d["depot_name"].as_str().unwrap().to_string(),
+                    manifest_id: d["manifest_id"].as_str().unwrap().to_string(),
+                })
+                .collect(),
+        };
+
+        for case in fixture["cases"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            let blocks: Vec<TemplateBlock> =
+                serde_json::from_value(case["blocks"].clone())
+                    .unwrap_or_else(|e| panic!("case {name}: bad blocks: {e}"));
+            let expected = case["expected"].as_str().unwrap();
+            let rendered = render_template(&blocks, &metadata)
+                .unwrap_or_else(|e| panic!("case {name}: render failed: {e}"));
+            assert_eq!(rendered, expected, "parity mismatch in case {name}");
+        }
+    }
+
     #[test]
     fn test_write_template_files_multiple_profiles_suffixed() {
         // Two or more selected profiles each get a <base>.<profile>.txt so they

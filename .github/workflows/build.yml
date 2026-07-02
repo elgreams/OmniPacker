@@ -51,6 +51,11 @@ jobs:
         run: cargo test
         working-directory: src-tauri
 
+      # The Rust side of this fixture runs inside cargo test above; this is
+      # the JS side. Both must pass for the two template renderers to agree.
+      - name: Check JS/Rust template parity
+        run: node scripts/check-template-parity.mjs
+
   build:
     needs: test
     strategy:
