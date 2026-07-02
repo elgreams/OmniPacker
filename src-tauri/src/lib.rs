@@ -89,6 +89,21 @@ fn fit_window_to_monitor(window: &tauri::WebviewWindow) {
 pub fn run() {
     let debug_console_flag = debug_console_from_args();
     tauri::Builder::default()
+        // Must be the first plugin so a second launch exits before any other
+        // initialization runs. Without this, instance B's startup staging
+        // sweep (cleanup_orphaned_staging below) would delete instance A's
+        // live download staging out from under DepotDownloader, and the two
+        // instances would race on shared config files (login.dat, output
+        // override, DD account tokens).
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // A second launch attempt lands here in the FIRST instance:
+            // surface the existing window instead.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .manage(DepotRunnerState::new())
         .manage(SevenZipRunnerState::new())
         .manage(TemplateMetadataState::default())
