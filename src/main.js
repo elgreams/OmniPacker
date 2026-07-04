@@ -324,6 +324,7 @@ const translations = {
     "template.block.depot_list": "Depot List Block",
     "template.block.free_text": "Free Text Block",
     "template.block.uploaded_version": "Uploaded Version Block",
+    "template.block.checksum_list": "Checksum List Block",
     "template.block.advertise_omnipacker": "Advertise OmniPacker",
     "template.field.template": "Template",
     "template.field.text": "Text",
@@ -556,6 +557,7 @@ const translations = {
     "template.block.depot_list": "Bloque de lista de depósitos",
     "template.block.free_text": "Bloque de texto libre",
     "template.block.uploaded_version": "Bloque de versión subida",
+    "template.block.checksum_list": "Checksum list block",
     "template.block.advertise_omnipacker": "Anunciar OmniPacker",
     "template.field.template": "Plantilla",
     "template.field.text": "Texto",
@@ -790,6 +792,7 @@ const translations = {
     "template.block.depot_list": "Bloc de liste des dépôts",
     "template.block.free_text": "Bloc de texte libre",
     "template.block.uploaded_version": "Bloc de version téléversée",
+    "template.block.checksum_list": "Checksum list block",
     "template.block.advertise_omnipacker": "Promouvoir OmniPacker",
     "template.field.template": "Modèle",
     "template.field.text": "Texte",
@@ -1024,6 +1027,7 @@ const translations = {
     "template.block.depot_list": "Depotlistenblock",
     "template.block.free_text": "Freitextblock",
     "template.block.uploaded_version": "Block für hochgeladene Version",
+    "template.block.checksum_list": "Checksum list block",
     "template.block.advertise_omnipacker": "OmniPacker bewerben",
     "template.field.template": "Vorlage",
     "template.field.text": "Text",
@@ -1256,6 +1260,7 @@ const translations = {
     "template.block.depot_list": "Блок списка депо",
     "template.block.free_text": "Блок свободного текста",
     "template.block.uploaded_version": "Блок загруженной версии",
+    "template.block.checksum_list": "Блок чексумм",
     "template.block.advertise_omnipacker": "Реклама OmniPacker",
     "template.field.template": "Шаблон",
     "template.field.text": "Текст",
@@ -1404,12 +1409,14 @@ const TEMPLATE_SINGLE_FIELDS = [
   // the looped Depot List line; these point at the primary depot specifically.
   "primary_depot_id",
   "primary_manifest_id",
+  "sha256",
   // Settings-sourced tokens kept last so the Settings-driven chips appear at the
   // end of the chip row. username comes from the "Uploader name" setting.
   "username",
   "upload_date",
 ];
 const TEMPLATE_DEPOT_FIELDS = ["depot_id", "depot_name", "manifest_id"];
+const TEMPLATE_CHECKSUM_FIELDS = ["file_name", "sha256"];
 
 // Fields sourced from settings rather than job metadata. `username` renders
 // blank when the "Uploader name" setting is empty; the chip tooltip notes this.
@@ -1473,6 +1480,7 @@ const TEMPLATE_BLOCK_TYPES = [
   { type: "depot_list", labelKey: "template.block.depot_list" },
   { type: "free_text", labelKey: "template.block.free_text" },
   { type: "uploaded_version", labelKey: "template.block.uploaded_version" },
+  { type: "checksum_list", labelKey: "template.block.checksum_list" },
   { type: "advertise_omnipacker", labelKey: "template.block.advertise_omnipacker" },
 ];
 
@@ -1496,6 +1504,11 @@ const TEMPLATE_DEFAULTS = {
   uploaded_version: {
     template:
       "[color=white][b]Uploaded version:[/b] [i]{{build_datetime_utc}} [Build {{build_id}}][/i][/color]",
+  },
+  checksum_list: {
+    title: "\"[color=white]Checksums (SHA-256)[/color]\"",
+    lineTemplate: "{{file_name}}: {{sha256}}",  
+    useCodeBlock: true,
   },
   advertise_omnipacker: {
     // Fixed-content block; renders OMNIPACKER_CREDIT with no editable fields.
@@ -1532,6 +1545,7 @@ const createStandardTemplate = () => [
   createTemplateBlock("version"),
   createTemplateBlock("depot_list"),
   createTemplateBlock("uploaded_version"),
+  createTemplateBlock("checksum_list"),
 ];
 
 // Store-header body for the crew preset. `{{upload_date}}` is fed by the global
@@ -1554,7 +1568,7 @@ const CREW_HEADER_FREETEXT =
 const createCrewTemplate = () => {
   const header = createTemplateBlock("free_text");
   header.config = { text: CREW_HEADER_FREETEXT };
-  return [header, createTemplateBlock("depot_list"), createTemplateBlock("uploaded_version")];
+  return [header, createTemplateBlock("depot_list"), createTemplateBlock("uploaded_version"), createTemplateBlock("checksum_list")];
 };
 
 // Built-in profile names. These are synthesized here, never written to disk,
@@ -2001,6 +2015,51 @@ const renderTemplateBuilder = () => {
       blockEl.appendChild(codeRow);
     }
 
+    if (block.type === "checksum_list") {
+      const titleField = document.createElement("div");
+      titleField.className = "template-block-field";
+      const titleLabel = document.createElement("label");
+      titleLabel.textContent = t("template.field.checksumTitle");
+      const titleInput = document.createElement("input");
+      titleInput.type = "text";
+      titleInput.value = block.config.title || "";
+      titleInput.addEventListener("input", () =>
+        updateTemplateBlockConfig(block.id, { title: titleInput.value })
+      );
+      titleField.appendChild(titleLabel);
+      titleField.appendChild(titleInput);
+      blockEl.appendChild(titleField);
+
+      const lineField = document.createElement("div");
+      lineField.className = "template-block-field";
+      const lineLabel = document.createElement("label");
+      lineLabel.textContent = t("template.field.checksumLine");
+      const lineInput = document.createElement("input");
+      lineInput.type = "text";
+      lineInput.value = block.config.lineTemplate || "";
+      lineInput.addEventListener("input", () =>
+        updateTemplateBlockConfig(block.id, { lineTemplate: lineInput.value })
+      );
+      lineField.appendChild(lineLabel);
+      lineField.appendChild(lineInput);
+      appendTemplateChipRow(lineField, lineInput, block.id, "lineTemplate", TEMPLATE_CHECKSUM_FIELDS);
+      blockEl.appendChild(lineField);
+
+      const codeRow = document.createElement("label");
+      codeRow.className = "checkbox-row";
+      const codeToggle = document.createElement("input");
+      codeToggle.type = "checkbox";
+      codeToggle.checked = Boolean(block.config.useCodeBlock);
+      codeToggle.addEventListener("change", () =>
+        updateTemplateBlockConfig(block.id, { useCodeBlock: codeToggle.checked })
+      );
+      const codeLabel = document.createElement("span");
+      codeLabel.textContent = t("template.field.useCode");
+      codeRow.appendChild(codeToggle);
+      codeRow.appendChild(codeLabel);
+      blockEl.appendChild(codeRow);
+    }
+
     templateBlocksContainer.appendChild(blockEl);
   });
 };
@@ -2056,6 +2115,7 @@ const renderTemplateOutput = (blocks, metadata) => {
     // preview matches job output.
     primary_depot_id: metadata.primary_depot_id || "",
     primary_manifest_id: metadata.primary_manifest_id || "",
+    sha256: metadata.sha256 || "",
   };
   const depots = Array.isArray(metadata.depots) ? metadata.depots : [];
   const outputParts = [];
@@ -2092,6 +2152,36 @@ const renderTemplateOutput = (blocks, metadata) => {
       }
       if (depots.length > TEMPLATE_MAX_DEPOTS) {
         return { error: t("template.error.depotLimit", { limit: TEMPLATE_MAX_DEPOTS }) };
+      }
+
+      if (block.type === "checksum_list") {
+        const checksums = Array.isArray(metadata.checksums) ? metadata.checksums : [];
+        if (checksums.length === 0) {
+          return { error: t("template.error.noChecksums") };
+        }
+
+        const lineTemplate = block.config.lineTemplate || "";
+        const lines = [];
+        for (const checksum of checksums) {
+          const checksumValues = {
+            file_name: checksum.file_name || "",
+            sha256: checksum.sha256 || "",
+          };
+          const rendered = renderTemplateString(lineTemplate, TEMPLATE_CHECKSUM_FIELDS, checksumValues);
+          if (rendered.error) {
+            return rendered;
+          }
+          lines.push(rendered.output);
+        }
+
+        const title = block.config.title || "Checksums (SHA-256)";
+        const useCode = Boolean(block.config.useCodeBlock);
+        let checksumOutput = `[spoiler=${title}]\n`;
+        if (useCode) checksumOutput += "[code=text]";
+        checksumOutput += lines.join("\n");
+        if (useCode) checksumOutput += "[/code]";
+        checksumOutput += "\n[/spoiler]";
+        outputParts.push(checksumOutput);
       }
 
       const lineTemplate = block.config.lineTemplate || "";
@@ -2231,6 +2321,21 @@ const parseTemplatePayload = (payload) => {
           typeof config.useCodeBlock === "boolean"
             ? config.useCodeBlock
             : TEMPLATE_DEFAULTS.depot_list.useCodeBlock,
+      };
+    } else if (block.type === "checksum_list") {
+      sanitized = {
+        title:
+          typeof config.title === "string"
+            ? config.title
+            : TEMPLATE_DEFAULTS.checksum_list.title,
+        lineTemplate:
+          typeof config.lineTemplate === "string"
+            ? config.lineTemplate
+            : TEMPLATE_DEFAULTS.checksum_list.lineTemplate,
+        useCodeBlock:
+          typeof config.useCodeBlock === "boolean"
+            ? config.useCodeBlock
+            : TEMPLATE_DEFAULTS.checksum_list.useCodeBlock,
       };
     }
     return {

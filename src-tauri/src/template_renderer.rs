@@ -18,6 +18,7 @@ pub enum TemplateBlock {
     DepotList { config: DepotListConfig },
     FreeText { config: FreeTextConfig },
     UploadedVersion { config: UploadedVersionConfig },
+    ChecksumList { config: ChecksumListConfig },
     AdvertiseOmnipacker {
         #[serde(default)]
         config: AdvertiseConfig,
@@ -53,6 +54,15 @@ pub struct FreeTextConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UploadedVersionConfig {
     pub template: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChecksumListConfig {
+    pub title: Option<String>,
+    #[serde(rename = "lineTemplate")]
+    pub line_template: String,
+    #[serde(rename = "useCodeBlock")]
+    pub use_code_block: Option<bool>,
 }
 
 /// Fixed-content "Advertise OmniPacker" block carries no user-editable fields.
@@ -100,6 +110,7 @@ fn block_type_name(block: &TemplateBlock) -> &'static str {
         TemplateBlock::DepotList { .. } => "depot_list",
         TemplateBlock::FreeText { .. } => "free_text",
         TemplateBlock::UploadedVersion { .. } => "uploaded_version",
+        TemplateBlock::ChecksumList { .. } => "checksum_list",
         TemplateBlock::AdvertiseOmnipacker { .. } => "advertise_omnipacker",
     }
 }
@@ -125,6 +136,7 @@ pub fn render_template(
     base_values.insert("upload_date".to_string(), metadata.upload_date.clone());
     base_values.insert("primary_depot_id".to_string(), metadata.primary_depot_id.clone());
     base_values.insert("primary_manifest_id".to_string(), metadata.primary_manifest_id.clone());
+    base_values.insert("sha256".to_string(), metadata.sha256.clone());
 
     for block in blocks {
         let part = match block {
@@ -175,6 +187,29 @@ pub fn render_template(
                 }
                 depot_output.push_str("\n[/spoiler]");
                 depot_output
+            }
+
+            TemplateBlock::ChecksumList { config } => {
+                let title = config.title.as_deref().unwrap_or("Checksums (SHA-256)");
+                let use_code = config.use_code_block.unwrap_or(false);
+
+                let lines: Vec<String> = metadata
+                    .checksums
+                    .iter()
+                    .map(|c| {
+                        let mut values = HashMap::new();
+                        values.insert("file_name".to_string(), c.file_name.clone());
+                        values.insert("sha256".to_string(), c.sha256.clone());
+                        render_template_string(&config.line_template, &values)
+                    })
+                    .collect();
+
+                let mut out = format!("[spoiler={}]\n", title);
+                if use_code { out.push_str("[code=text]"); }
+                out.push_str(&lines.join("\n"));
+                if use_code { out.push_str("[/code]"); }
+                out.push_str("\n[/spoiler]");
+                out
             }
         };
         output_parts.push(part);
@@ -397,6 +432,8 @@ mod tests {
                     manifest_id: "4851806656204679952".to_string(),
                 },
             ],
+            sha256: String::new(),
+            checksums: vec![],
         };
 
         let blocks = vec![
@@ -460,6 +497,8 @@ mod tests {
                 depot_name: "Balatro".to_string(),
                 manifest_id: "4851806656204679952".to_string(),
             }],
+            sha256: String::new(),
+            checksums: vec![],
         };
         metadata.set_uploader("packer".to_string());
         metadata.set_upload_date("June 25, 2026".to_string());
@@ -493,6 +532,8 @@ mod tests {
             primary_depot_id: String::new(),
             primary_manifest_id: String::new(),
             depots: vec![],
+            sha256: String::new(),
+            checksums: vec![],
         };
 
         let blocks = vec![TemplateBlock::AdvertiseOmnipacker {
@@ -525,6 +566,8 @@ mod tests {
                 depot_name: "Balatro Content".to_string(),
                 manifest_id: "4851806656204679952".to_string(),
             }],
+            sha256: String::new(),
+            checksums: vec![],
         };
 
         let rendered = render_template(&create_default_template(), &metadata).unwrap();
@@ -603,6 +646,8 @@ mod tests {
                 depot_name: "Balatro Content".to_string(),
                 manifest_id: "4851806656204679952".to_string(),
             }],
+            sha256: String::new(),
+            checksums: vec![],
         }
     }
 
