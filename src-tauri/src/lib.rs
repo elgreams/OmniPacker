@@ -1,4 +1,5 @@
 mod acf_generator;
+mod checksum;
 pub(crate) mod debug_console;
 mod debug_log;
 mod depot_runner;

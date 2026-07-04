@@ -4,12 +4,19 @@ use std::sync::Mutex;
 use tauri::State;
 
 use crate::job_metadata::JobMetadataFile;
+use crate::checksum::FileChecksum;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct TemplateDepot {
     pub depot_id: String,
     pub depot_name: String,
     pub manifest_id: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TemplateChecksum {
+    pub file_name: String,
+    pub sha256: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -42,6 +49,11 @@ pub struct TemplateMetadata {
     /// matching entry in `depots`.
     pub primary_manifest_id: String,
     pub depots: Vec<TemplateDepot>,
+    /// For single-archive case. Empty when there are zero or multiple output
+    /// files (use `checksums` then).
+    pub sha256: String,
+    /// One entry per resulting output file.
+    pub checksums: Vec<TemplateChecksum>,
 }
 
 impl TemplateMetadata {
@@ -98,6 +110,8 @@ impl TemplateMetadata {
             primary_depot_id: metadata.primary_depot_id.clone(),
             primary_manifest_id,
             depots,
+            sha256: String::new(),
+            checksums: vec![],
         }
     }
 
@@ -111,6 +125,21 @@ impl TemplateMetadata {
     /// originates from the frontend rather than job.json.
     pub fn set_upload_date(&mut self, upload_date: String) {
         self.upload_date = upload_date;
+    }
+
+    /// Applies the computed output checksums, populated after compression.
+    pub fn set_checksums(&mut self, checksums: Vec<FileChecksum>) {
+        self.checksums = checksums
+            .iter()
+            .map(|c| TemplateChecksum {
+                file_name: c.file_name.clone(),
+                sha256: c.sha256.clone(),
+            })
+            .collect();
+        self.sha256 = match self.checksums.as_slice() {
+            [only] => only.sha256.clone(),
+            _ => String::new(),
+        };
     }
 }
 

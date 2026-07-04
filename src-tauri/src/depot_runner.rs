@@ -14,6 +14,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+use crate::checksum::calculate_checksums;
 use crate::debug_console::{debug_eprintln, DebugConsoleState};
 use crate::debug_log::{debug_log, DebugLog};
 use crate::job_finalization::{finalize_job, resolve_archive_path};
@@ -1454,6 +1455,34 @@ fn run_depotdownloader_worker(
                             }
                         }
                         // === END COMPRESSION ===
+
+                        // === CHECKSUM PHASE ===
+                        // Hash files on disk, so the template can embed a verifiable SHA-256.
+                        // Runs after compression: final_output_path is `Game.7z`,
+                        // `.7z.001.../.002...` volumes, or, if compression was
+                        // skipped (in which case `compute_output_checksums` returns an empty list
+                        // and the block renders blank rather than erroring).
+                        match calculate_checksums(&final_output_path) {
+                            Ok(checksums) => {
+                                if let Some(mut template_metadata) =
+                                    app_handle_clone.state::<TemplateMetadataState>().get()
+                                {
+                                    template_metadata.set_checksums(checksums);
+                                    app_handle_clone
+                                        .state::<TemplateMetadataState>()
+                                        .set(template_metadata);
+                                }
+                            }
+                            Err(err) => {
+                                emit_log(
+                                    &app_handle_clone,
+                                    "system",
+                                    &format!("Failed to compute checksum: {err}. Continuing without it."),
+                                    &job_id_for_monitor,
+                                );
+                            }
+                        }
+                        // === END CHECKSUM PHASE ===
 
                         // === TEMPLATE GENERATION ===
                         // Generate the template text file next to the output. This
