@@ -88,6 +88,18 @@ fn fit_window_to_monitor(window: &tauri::WebviewWindow) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // WebKitGTK's DMA-BUF renderer fails on some driver/compositor combos
+    // (NVIDIA proprietary, VMs, certain Wayland setups) with
+    // "Could not create default EGL display: EGL_BAD_PARAMETER" and a grey,
+    // never-painted window. Force the shared-memory rendering path instead;
+    // the visual result is identical for a UI like this. Respect an explicit
+    // user override, and set it before any GTK/WebKit initialization.
+    // See tauri-apps/tauri#9304.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     let debug_console_flag = debug_console_from_args();
     tauri::Builder::default()
         // Must be the first plugin so a second launch exits before any other
