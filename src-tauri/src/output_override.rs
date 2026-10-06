@@ -38,6 +38,7 @@ fn validate_writable_dir(path: &Path) -> Result<(), String> {
     match std::fs::OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open(&probe)
     {
         Ok(_) => {

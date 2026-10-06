@@ -35,7 +35,7 @@ impl VdfBuilder {
         }
     }
 
-    /// Writes a key-value pair: "key"		"value"
+    /// Writes a key-value pair: `"key"<TAB><TAB>"value"`
     fn key_value(&mut self, key: &str, value: &str) {
         self.indent();
         self.content.push_str(&format!("\"{}\"\t\t\"{}\"\n", key, value));

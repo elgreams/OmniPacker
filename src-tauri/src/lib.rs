@@ -124,7 +124,7 @@ pub fn run() {
         .manage(DebugConsoleState::new(debug_console_flag))
         .setup(|app| {
             let app_handle = app.handle();
-            match cleanup_orphaned_staging(&app_handle) {
+            match cleanup_orphaned_staging(app_handle) {
                 Ok(count) => {
                     if count > 0 {
                         eprintln!("Cleaned up {count} orphaned staging entries.");
@@ -134,7 +134,7 @@ pub fn run() {
                     eprintln!("Failed to clean staging directory on startup: {err}");
                 }
             }
-            appimage_integration::maybe_install_appimage_integration(&app_handle);
+            appimage_integration::maybe_install_appimage_integration(app_handle);
             if let Some(window) = app.get_webview_window("main") {
                 fit_window_to_monitor(&window);
             }

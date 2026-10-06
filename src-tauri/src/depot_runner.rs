@@ -995,10 +995,8 @@ fn redact_dd_password_args(args: &[String]) -> Vec<String> {
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         redacted.push(arg.clone());
-        if arg == "-password" || arg == "-branchpassword" {
-            if iter.next().is_some() {
-                redacted.push("********".to_string());
-            }
+        if (arg == "-password" || arg == "-branchpassword") && iter.next().is_some() {
+            redacted.push("********".to_string());
         }
     }
     redacted
@@ -2051,7 +2049,7 @@ fn run_preflight_before_download(
     state: &DepotRunnerState,
     job: &JobMetadata,
     job_id: &str,
-    staging_dir: &PathBuf,
+    staging_dir: &std::path::Path,
 ) -> Result<(), String> {
     if job.qr_enabled {
         // For QR auth, preflight can't run before download - SteamDB API will be used instead
@@ -2345,16 +2343,8 @@ fn spawn_preflight_reader(
         let mut pending: Vec<u8> = Vec::new();
         let mut prompt_emitted = false;
 
-        loop {
-            let n = match reader.read(&mut buffer) {
-                Ok(n) => n,
-                Err(_) => break,
-            };
-
-            if n == 0 {
-                break; // EOF
-            }
-
+        // Read until EOF (Ok(0)) or a read error.
+        while let Ok(n @ 1..) = reader.read(&mut buffer) {
             debug_log!(log, "[RAW {} bytes] {}", n, String::from_utf8_lossy(&buffer[..n]));
 
             pending.extend_from_slice(&buffer[..n]);

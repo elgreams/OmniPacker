@@ -22,6 +22,7 @@ fn ensure_writable_dir(path: &Path) -> Result<(), String> {
     let write_result = OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open(&test_path);
 
     if let Ok(mut file) = write_result {

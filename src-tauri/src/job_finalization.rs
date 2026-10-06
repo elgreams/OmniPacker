@@ -190,7 +190,7 @@ fn compute_final_output_path(
 pub fn resolve_archive_path(output_path: &Path) -> PathBuf {
     let file_name = output_path
         .file_name()
-        .unwrap_or_else(|| output_path.as_os_str());
+        .unwrap_or(output_path.as_os_str());
     let mut archive_name = OsString::from(file_name);
     archive_name.push(".7z");
 

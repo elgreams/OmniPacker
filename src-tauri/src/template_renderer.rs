@@ -2,7 +2,7 @@ use crate::template_metadata::TemplateMetadata;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Canonical OmniPacker credit line. Single source of truth on the Rust side;
 /// the frontend (main.js) has a matching `OMNIPACKER_CREDIT` constant.
@@ -289,7 +289,7 @@ const CREW_HEADER_FREETEXT: &str = "[img]https://steamcdn-a.akamaihd.net/steam/a
 /// so multiple selected profiles each get their own non-colliding file. A single
 /// profile passes `None` and keeps the historical `<base>.txt` name.
 fn derive_template_txt_path(
-    output_path: &PathBuf,
+    output_path: &Path,
     suffix: Option<&str>,
 ) -> Result<PathBuf, String> {
     let file_name = output_path
@@ -330,7 +330,7 @@ fn sanitize_profile_suffix(name: &str) -> String {
 /// or more produce `<base>.<profile>.txt` each so they do not collide. An empty
 /// profile list falls back to a single default-template `<base>.txt`.
 pub fn write_template_files(
-    output_path: &PathBuf,
+    output_path: &Path,
     metadata: &TemplateMetadata,
     profiles: &[TemplateProfile],
 ) -> Result<(), String> {

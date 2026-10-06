@@ -318,7 +318,7 @@ pub fn calculate_7z_compression_args(
     }
 
     let min_per_thread_bytes = if high_memory_pressure {
-        1 * GB
+        GB
     } else if medium_memory_pressure {
         768 * MB
     } else {
@@ -467,16 +467,8 @@ fn spawn_log_reader(app_handle: AppHandle, stream: impl std::io::Read + Send + '
         let mut last_percent: Option<u8> = None;
         let mut last_was_cr = false;
 
-        loop {
-            let n = match reader.read(&mut buffer) {
-                Ok(n) => n,
-                Err(_) => break,
-            };
-
-            if n == 0 {
-                break;
-            }
-
+        // Read until EOF (Ok(0)) or a read error.
+        while let Ok(n @ 1..) = reader.read(&mut buffer) {
             let chunk = String::from_utf8_lossy(&buffer[..n]).to_string();
             debug_log!(log, "[RAW {n} bytes] {chunk}");
             for ch in chunk.chars() {

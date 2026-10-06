@@ -1,6 +1,5 @@
 use crate::template_renderer::TemplatePayload;
 use serde::Serialize;
-use serde_json;
 use std::fs;
 use std::path::PathBuf;
 use tauri::AppHandle;

@@ -92,6 +92,7 @@ pub struct JobMetadataFile {
 
 impl JobMetadataFile {
     /// Creates a new JobMetadataFile with required fields
+    #[allow(clippy::too_many_arguments)] // one arg per required job.json field
     pub fn new(
         job_id: String,
         appid: String,
