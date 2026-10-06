@@ -14,6 +14,7 @@ const panels = document.querySelectorAll(".tab-content");
 const qrLoginToggle = document.getElementById("qr-login-toggle");
 const appIdInput = document.getElementById("appid");
 const osDropdown = document.getElementById("os-dropdown");
+const gameLanguageSelect = document.getElementById("game-language-select");
 const branchDropdown = document.getElementById("branch-dropdown");
 const branchOptionsContainer = document.getElementById("branch-options");
 const branchAddInput = document.getElementById("branch-add-input");
@@ -1596,6 +1597,7 @@ const createJobId = () => {
 // fan out into the cartesian product of checked OS × checked branches.
 const getCredentialSnapshot = () => ({
   appId: appIdInput?.value?.trim() || "unknown",
+  language: gameLanguageSelect?.value || "english",
   username: steamUsernameInput?.value?.trim() || "",
   password: steamPasswordInput?.value || "",
   qrEnabled: Boolean(qrLoginToggle?.checked),
@@ -1672,11 +1674,13 @@ const clearStoredTokenIfUnsaved = () => {
   });
 };
 
-const createJob = ({ appId, os, branch, branchPassword, username, password, qrEnabled }) => {
+const createJob = ({ appId, os, language, branch, branchPassword, username, password, qrEnabled }) => {
   const job = {
     id: createJobId(),
     appId,
     os,
+    // Steam language code for language-specific depots; "english" is the default.
+    language: language || "english",
     branch,
     branchPassword: branchPassword || "",
     username,
@@ -1795,6 +1799,7 @@ const updateFormInputState = () => {
 
   // Disable form inputs
   if (appIdInput) appIdInput.disabled = running;
+  if (gameLanguageSelect) gameLanguageSelect.disabled = running;
   setDropdownDisabled(osDropdown, running);
   setDropdownDisabled(branchDropdown, running);
   syncAddToQueueButton();
@@ -3029,6 +3034,7 @@ if (tauriEvent?.listen) {
 const buildJobMetadata = (job) => ({
   appId: job.appId || "unknown",
   os: job.os || "Windows x64",
+  language: job.language || "english",
   branch: job.branch || "public",
   branchPassword: job.branchPassword || "",
   username: job.username || "",
@@ -3523,6 +3529,13 @@ const renderQueue = () => {
       branch: job.branch || "public",
       os: formatOsLabel(job.os),
     });
+    if (job.language && job.language !== "english") {
+      // Show the endonym from the picker (e.g. "Deutsch") rather than the code.
+      const option = Array.from(gameLanguageSelect?.options || []).find(
+        (opt) => opt.value === job.language,
+      );
+      meta.textContent += ` • ${option?.textContent || job.language}`;
+    }
 
     row.appendChild(header);
     row.appendChild(top);

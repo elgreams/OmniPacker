@@ -34,6 +34,7 @@ export default {
   "game.appid": "AppID:",
   "game.add": "Добавить в очередь",
   "game.os": "ОС:",
+  "game.language": "Язык:",
   "branch.title": "Менеджер веток",
   "branch.label": "Ветка для загрузки:",
   "branch.add": "Добавить",

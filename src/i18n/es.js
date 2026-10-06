@@ -34,6 +34,7 @@ export default {
   "game.appid": "AppID:",
   "game.add": "Agregar a la cola",
   "game.os": "SO:",
+  "game.language": "Idioma:",
   "branch.title": "Gestor de ramas",
   "branch.label": "Rama para descargar:",
   "branch.add": "Agregar",

@@ -75,6 +75,13 @@ pub fn build_preflight_args(
     args.push("-osarch".to_string());
     args.push(arch.to_string());
 
+    // Same depot selection as the main download, or preflight would resolve
+    // metadata for different (english) depots.
+    if let Some(lang) = crate::depot_runner::language_arg(job) {
+        args.push("-language".to_string());
+        args.push(lang);
+    }
+
     // Authentication
     if job.qr_enabled {
         args.push("-qr".to_string());

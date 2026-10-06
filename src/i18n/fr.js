@@ -34,6 +34,7 @@ export default {
   "game.appid": "AppID:",
   "game.add": "Ajouter à la file",
   "game.os": "OS:",
+  "game.language": "Langue :",
   "branch.title": "Gestionnaire de branches",
   "branch.label": "Branche à télécharger:",
   "branch.add": "Ajouter",

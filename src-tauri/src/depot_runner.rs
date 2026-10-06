@@ -40,6 +40,10 @@ pub struct JobMetadata {
     /// DepotDownloader as `-branchpassword` only when a non-public branch is set.
     #[serde(default)]
     pub branch_password: String,
+    /// Steam language code for language-specific depots (e.g. "english",
+    /// "german", "schinese"). Empty means DepotDownloader's default (english).
+    #[serde(default)]
+    pub language: String,
     pub username: String,
     pub password: String,
     pub qr_enabled: bool,
@@ -375,6 +379,15 @@ pub fn resolve_depotdownloader_path(app_handle: &AppHandle) -> Result<PathBuf, S
     }
 
     Ok(sidecar_path)
+}
+
+/// Steam language code to pass as `-language`, or `None` for the default
+/// (english). Only lowercase ASCII letters are accepted, so a malformed value
+/// can never inject a second argument.
+pub(crate) fn language_arg(job: &JobMetadata) -> Option<String> {
+    let lang = job.language.trim().to_ascii_lowercase();
+    (!lang.is_empty() && lang != "english" && lang.chars().all(|c| c.is_ascii_lowercase()))
+        .then_some(lang)
 }
 
 /// Maps OS selection string to DepotDownloader -os and -osarch arguments
@@ -1355,6 +1368,11 @@ fn build_depot_args(job: &JobMetadata, config_dir: Option<&str>) -> Result<Vec<S
     args.push(os.to_string());
     args.push("-osarch".to_string());
     args.push(arch.to_string());
+
+    if let Some(lang) = language_arg(job) {
+        args.push("-language".to_string());
+        args.push(lang);
+    }
 
     if job.qr_enabled {
         args.push("-qr".to_string());
@@ -2908,6 +2926,31 @@ mod tests {
     }
 
     #[test]
+    fn language_arg_only_for_valid_non_default_codes() {
+        use super::{language_arg, JobMetadata};
+        let job = |lang: &str| {
+            serde_json::from_value::<JobMetadata>(serde_json::json!({
+                "appId": "1", "os": "Windows x64", "branch": "public",
+                "username": "", "password": "", "qrEnabled": false, "language": lang
+            }))
+            .unwrap()
+        };
+        assert_eq!(language_arg(&job("german")).as_deref(), Some("german"));
+        assert_eq!(language_arg(&job("SChinese")).as_deref(), Some("schinese"));
+        assert_eq!(language_arg(&job("english")), None);
+        assert_eq!(language_arg(&job("")), None);
+        // Anything that isn't a plain code is dropped, never passed through.
+        assert_eq!(language_arg(&job("german -debug")), None);
+        // Older frontends that don't send the field still deserialize.
+        let legacy: JobMetadata = serde_json::from_value(serde_json::json!({
+            "appId": "1", "os": "Windows x64", "branch": "public",
+            "username": "", "password": "", "qrEnabled": false
+        }))
+        .unwrap();
+        assert_eq!(language_arg(&legacy), None);
+    }
+
+    #[test]
     fn classify_dlc_crimson_desert() {
         // Real Crimson Desert shape: 3 listed DLC have no depots (unlock only),
         // 5001840 has windows+mac depots, 4783050 has a depot but isn't listed.
@@ -3201,6 +3244,7 @@ mod tests {
             os: "Windows x64".to_string(),
             branch: "public".to_string(),
             branch_password: String::new(),
+            language: String::new(),
             username: String::new(),
             password: String::new(),
             qr_enabled: false,
@@ -3222,6 +3266,20 @@ mod tests {
         assert_eq!(
             args,
             vec!["-app", "440", "-branch", "public", "-os", "windows", "-osarch", "64"]
+        );
+    }
+
+    #[test]
+    fn depot_args_language_follows_os() {
+        let mut job = base_job();
+        job.language = "german".to_string();
+        let args = build_depot_args(&job, None).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "-app", "440", "-branch", "public", "-os", "windows", "-osarch", "64",
+                "-language", "german"
+            ]
         );
     }
 

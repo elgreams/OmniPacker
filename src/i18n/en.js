@@ -34,6 +34,7 @@ export default {
   "game.appid": "AppID:",
   "game.add": "Add to Queue",
   "game.os": "OS:",
+  "game.language": "Language:",
   "branch.title": "Branch Manager",
   "branch.label": "Branch to download:",
   "branch.add": "Add",
