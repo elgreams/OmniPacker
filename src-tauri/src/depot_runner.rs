@@ -405,6 +405,37 @@ fn read_manifest_id_from_disk(manifest_dir: &std::path::Path, depot_id: &str) ->
     None
 }
 
+/// Sort key for depot directory names: numeric IDs in numeric order, anything
+/// non-numeric after them (by name), so the order is stable across filesystems.
+fn depot_sort_key(name: &str) -> (u64, String) {
+    (name.parse::<u64>().unwrap_or(u64::MAX), name.to_string())
+}
+
+/// Chooses the primary (base-game) depot: the depot named after the game and
+/// whose manifest feeds `{{primary_manifest_id}}`.
+///
+/// Preference, each tier taking the lowest depot ID (input is already sorted):
+///   1. Not shared and not DLC (a DLC depot's `dlcappid` points at another app;
+///      one equal to the job's own appid still counts as base game).
+///   2. Not shared (DLC info missing or every non-shared depot is DLC).
+///   3. Any depot (everything is shared, e.g. a redist-only download).
+///
+/// Returns an empty string only when `depots` is empty.
+fn select_primary_depot(
+    depots: &[DepotInfo],
+    app_id: &str,
+    is_shared: impl Fn(&str) -> bool,
+) -> String {
+    let is_dlc = |d: &DepotInfo| d.dlcappid.as_deref().is_some_and(|id| id != app_id);
+    depots
+        .iter()
+        .find(|d| !is_shared(&d.depot_id) && !is_dlc(d))
+        .or_else(|| depots.iter().find(|d| !is_shared(&d.depot_id)))
+        .or_else(|| depots.first())
+        .map(|d| d.depot_id.clone())
+        .unwrap_or_default()
+}
+
 /// Derives metadata from downloaded content (for QR auth case where preflight was skipped)
 fn derive_metadata_from_download(
     app_handle: &AppHandle,
@@ -431,14 +462,18 @@ fn derive_metadata_from_download(
 
     let depots_dir = staging_dir.join("depots");
     let mut depots = Vec::new();
-    let mut primary_depot_id = String::new();
     let mut build_id = String::new();
 
-    // Scan depots directory
-    for entry in fs::read_dir(&depots_dir)
+    // Scan depots in numeric ID order. read_dir order is filesystem-dependent,
+    // and both the build ID (first manifest dir) and the depot list order (which
+    // feeds the .acf and templates) used to depend on it.
+    let mut depot_entries: Vec<_> = fs::read_dir(&depots_dir)
         .map_err(|e| format!("Failed to read depots directory: {}", e))?
-    {
-        let entry = entry.map_err(|e| format!("Failed to read depot entry: {}", e))?;
+        .collect::<Result<_, _>>()
+        .map_err(|e| format!("Failed to read depot entry: {}", e))?;
+    depot_entries.sort_by_key(|entry| depot_sort_key(&entry.file_name().to_string_lossy()));
+
+    for entry in depot_entries {
         let depot_path = entry.path();
 
         if !depot_path.is_dir() {
@@ -476,12 +511,6 @@ fn derive_metadata_from_download(
             let manifest_id = read_manifest_id_from_disk(&manifest_dir, &depot_id)
                 .unwrap_or_else(|| build_id.clone());
 
-            // Use first NON-SHARED depot as primary
-            use crate::shared_depots::is_shared_depot;
-            if primary_depot_id.is_empty() && !is_shared_depot(&depot_id) {
-                primary_depot_id = depot_id.clone();
-            }
-
             depots.push(DepotInfo {
                 depot_id: depot_id.clone(),
                 depot_name: format!("depot_{}", depot_id), // Fallback name - will be enhanced below
@@ -490,11 +519,6 @@ fn derive_metadata_from_download(
                 dlcappid: None, // Best-effort enrichment below
             });
         }
-    }
-
-    // If no primary depot was found (all depots are shared), use the first one
-    if primary_depot_id.is_empty() && !depots.is_empty() {
-        primary_depot_id = depots[0].depot_id.clone();
     }
 
     if depots.is_empty() {
@@ -573,6 +597,13 @@ fn derive_metadata_from_download(
     // Data-driven shared-depot ownership from appinfo, unioned with the hardcoded
     // list so known redists still resolve offline.
     let shared_owners = crate::steamcmd_api::fetch_shared_depots(&job.app_id);
+
+    // Pick the primary (base-game) depot now that DLC and shared-depot info is
+    // known. It used to be "first non-shared depot in read_dir order", so a DLC
+    // depot listed first got the game's name and drove {{primary_manifest_id}}.
+    let primary_depot_id = select_primary_depot(&depots, &job.app_id, |id| {
+        is_shared_depot(id) || shared_owners.contains_key(id)
+    });
 
     // Resolve (and cache locally) an owner/DLC app's real name.
     let mut app_name_cache: std::collections::HashMap<String, Option<String>> =
@@ -2380,7 +2411,68 @@ fn is_executable(path: &PathBuf) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_os_selection, DepotRunnerState, DownloadProgress};
+    use super::{
+        depot_sort_key, map_os_selection, select_primary_depot, DepotInfo, DepotRunnerState,
+        DownloadProgress,
+    };
+
+    fn depot(id: &str, dlcappid: Option<&str>) -> DepotInfo {
+        DepotInfo {
+            depot_id: id.to_string(),
+            depot_name: format!("depot_{id}"),
+            manifest_id: "1".to_string(),
+            manifest_id_used: None,
+            dlcappid: dlcappid.map(str::to_string),
+        }
+    }
+
+    fn sorted(mut ids: Vec<&str>) -> Vec<&str> {
+        ids.sort_by_key(|id| depot_sort_key(id));
+        ids
+    }
+
+    #[test]
+    fn depot_sort_is_numeric_not_lexical() {
+        // Lexically "1056760" < "227302"; numerically the base depot comes first.
+        assert_eq!(
+            sorted(vec!["1056760", "228989", "227302", ".DepotDownloader"]),
+            vec!["227302", "228989", "1056760", ".DepotDownloader"]
+        );
+    }
+
+    #[test]
+    fn primary_skips_dlc_depot_listed_first() {
+        // Regression: shaped like Euro Truck Simulator 2 (227300), whose DLC
+        // depots carry a dlcappid pointing at the DLC app. A DLC depot that
+        // happened to be enumerated first used to become the primary depot.
+        let depots = vec![
+            depot("228989", None),             // VC++ 2022 redist (shared)
+            depot("1056760", Some("1056760")), // DLC
+            depot("227302", None),             // base game (windows)
+        ];
+        let shared = |id: &str| id == "228989";
+        assert_eq!(select_primary_depot(&depots, "227300", shared), "227302");
+    }
+
+    #[test]
+    fn primary_falls_back_when_every_non_shared_depot_is_dlc() {
+        let depots = vec![depot("228989", None), depot("1056760", Some("1056760"))];
+        let shared = |id: &str| id == "228989";
+        assert_eq!(select_primary_depot(&depots, "227300", shared), "1056760");
+    }
+
+    #[test]
+    fn primary_treats_self_referencing_dlcappid_as_base_game() {
+        let depots = vec![depot("500", Some("999")), depot("501", Some("400"))];
+        assert_eq!(select_primary_depot(&depots, "400", |_| false), "501");
+    }
+
+    #[test]
+    fn primary_uses_first_depot_when_all_shared_or_empty() {
+        let depots = vec![depot("228989", None), depot("228990", None)];
+        assert_eq!(select_primary_depot(&depots, "1", |_| true), "228989");
+        assert_eq!(select_primary_depot(&[], "1", |_| true), "");
+    }
 
     #[test]
     fn reset_parse_state_clears_every_accumulator() {
