@@ -502,7 +502,13 @@ fn transform_depots_to_steamapps(
             }
         }
 
-        copy_dir_recursive_filtered(&manifest_dir, &target_dir, |path| {
+        // Move (not copy) the depot content into place. Staging and the temp
+        // assembly dir share a volume, so this is a metadata-only rename: a
+        // 150 GB game no longer needs a second full copy on disk (peak usage
+        // was staging + copy + archive, ~3x the game) nor an hour of copying.
+        // Staging is discarded after finalization either way. The
+        // .DepotDownloader bookkeeping dir is filtered out and stays in staging.
+        move_dir_merge(&manifest_dir, &target_dir, |path| {
             !path.file_name().map(|n| n == ".DepotDownloader").unwrap_or(false)
         })?;
     }
@@ -575,7 +581,74 @@ fn atomic_finalize(temp_path: &Path, final_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Recursively copies a directory and all its contents with filtering
+/// Moves the contents of `src` into `dst`, merging with anything already there.
+///
+/// Entries whose destination doesn't exist yet are renamed wholesale (a whole
+/// subtree in one cheap metadata operation). When both sides are directories
+/// the move recurses so multiple depots can merge into one install folder. An
+/// existing destination file is replaced, matching the previous copy-merge.
+///
+/// If a rename fails (e.g. the scratch dir somehow spans volumes), that entry
+/// falls back to copy-then-delete, so the result is the same, just slower.
+///
+/// `filter` receives each source path; returning false leaves it in `src`.
+fn move_dir_merge<F>(src: &Path, dst: &Path, filter: F) -> Result<(), String>
+where
+    F: Fn(&Path) -> bool + Copy,
+{
+    if !src.is_dir() {
+        return Err(format!("Source is not a directory: {}", src.display()));
+    }
+
+    fs::create_dir_all(dst)
+        .map_err(|e| format!("Failed to create directory {}: {}", dst.display(), e))?;
+
+    for entry in fs::read_dir(src)
+        .map_err(|e| format!("Failed to read directory {}: {}", src.display(), e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let src_path = entry.path();
+
+        if !filter(&src_path) {
+            continue;
+        }
+
+        let dst_path = dst.join(entry.file_name());
+        let src_is_dir = src_path.is_dir();
+
+        if src_is_dir && dst_path.is_dir() {
+            move_dir_merge(&src_path, &dst_path, filter)?;
+            continue;
+        }
+
+        if fs::rename(&src_path, &dst_path).is_ok() {
+            continue;
+        }
+
+        // Fallback: copy then remove the source.
+        if src_is_dir {
+            copy_dir_recursive_filtered(&src_path, &dst_path, filter)?;
+            fs::remove_dir_all(&src_path).map_err(|e| {
+                format!("Failed to remove moved directory {}: {}", src_path.display(), e)
+            })?;
+        } else {
+            fs::copy(&src_path, &dst_path).map_err(|e| {
+                format!(
+                    "Failed to move file {} to {}: {}",
+                    src_path.display(),
+                    dst_path.display(),
+                    e
+                )
+            })?;
+            let _ = fs::remove_file(&src_path);
+        }
+    }
+
+    Ok(())
+}
+
+/// Recursively copies a directory and all its contents with filtering. Only
+/// used as the cross-volume fallback for [`move_dir_merge`].
 ///
 /// The filter function receives the source path and returns true if it should be copied
 fn copy_dir_recursive_filtered<F>(src: &Path, dst: &Path, filter: F) -> Result<(), String>
@@ -652,6 +725,57 @@ mod tests {
             result,
             Some("_CommonRedist/vcredist/2012/installscript.vdf".to_string())
         );
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn move_dir_merge_moves_and_merges_depots() {
+        // Two depots sharing a subfolder merge into one install dir; files are
+        // moved (gone from staging), and .DepotDownloader stays behind.
+        let root = temp_dir("move_merge");
+        let depot_a = root.join("depots/100/build");
+        let depot_b = root.join("depots/101/build");
+        fs::create_dir_all(depot_a.join("bin")).unwrap();
+        fs::create_dir_all(depot_a.join(".DepotDownloader")).unwrap();
+        fs::create_dir_all(depot_b.join("bin")).unwrap();
+        fs::create_dir_all(depot_b.join("data/deep")).unwrap();
+        fs::write(depot_a.join("bin/game.exe"), b"exe").unwrap();
+        fs::write(depot_a.join(".DepotDownloader/100_1.manifest"), b"m").unwrap();
+        fs::write(depot_b.join("bin/extra.dll"), b"dll").unwrap();
+        fs::write(depot_b.join("data/deep/pak0"), b"pak").unwrap();
+
+        let target = root.join("out/steamapps/common/Game");
+        let keep_dd = |p: &Path| !p.file_name().map(|n| n == ".DepotDownloader").unwrap_or(false);
+        move_dir_merge(&depot_a, &target, keep_dd).unwrap();
+        move_dir_merge(&depot_b, &target, keep_dd).unwrap();
+
+        assert_eq!(fs::read(target.join("bin/game.exe")).unwrap(), b"exe");
+        assert_eq!(fs::read(target.join("bin/extra.dll")).unwrap(), b"dll");
+        assert_eq!(fs::read(target.join("data/deep/pak0")).unwrap(), b"pak");
+        assert!(!target.join(".DepotDownloader").exists());
+
+        // Moved, not copied.
+        assert!(!depot_a.join("bin/game.exe").exists());
+        assert!(!depot_b.join("data").exists());
+        // Bookkeeping left in staging (still needed for the depotcache copy).
+        assert!(depot_a.join(".DepotDownloader/100_1.manifest").exists());
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn move_dir_merge_replaces_existing_file() {
+        let root = temp_dir("move_replace");
+        let src = root.join("src");
+        let dst = root.join("dst");
+        fs::create_dir_all(&src).unwrap();
+        fs::create_dir_all(&dst).unwrap();
+        fs::write(src.join("same.txt"), b"new").unwrap();
+        fs::write(dst.join("same.txt"), b"old").unwrap();
+
+        move_dir_merge(&src, &dst, |_| true).unwrap();
+        assert_eq!(fs::read(dst.join("same.txt")).unwrap(), b"new");
 
         fs::remove_dir_all(&root).ok();
     }
