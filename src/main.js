@@ -3602,7 +3602,16 @@ const renderConsole = (force = false) => {
     return;
   }
 
-  if (consoleRenderState.jobId !== selectedJob.id) {
+  // Follow new output only if the user is already at (or near) the bottom, so
+  // scrolling up to read earlier lines isn't yanked back down on every new
+  // log line. A fresh view (switching jobs, opening the tab) always starts at
+  // the bottom. Capture this BEFORE touching .value: assigning a textarea's
+  // value can reset its scroll position.
+  const jobChanged = consoleRenderState.jobId !== selectedJob.id;
+  const previousScrollTop = consoleOutput.scrollTop;
+  const followOutput = force || jobChanged || isConsoleScrolledToBottom();
+
+  if (jobChanged) {
     consoleRenderState.jobId = selectedJob.id;
     consoleRenderState.renderedLines = 0;
     consoleRenderState.needsFullRender = true;
@@ -3632,9 +3641,18 @@ const renderConsole = (force = false) => {
     consoleRenderState.renderedLines = selectedJob.logs.length;
   }
 
-  // Auto-scroll to bottom so user sees latest output
-  consoleOutput.scrollTop = consoleOutput.scrollHeight;
+  consoleOutput.scrollTop = followOutput
+    ? consoleOutput.scrollHeight
+    : previousScrollTop;
 };
+
+// Within this many pixels of the end counts as "at the bottom" (about one
+// line), so a not-quite-flush scroll position still follows new output.
+const CONSOLE_BOTTOM_THRESHOLD_PX = 24;
+
+const isConsoleScrolledToBottom = () =>
+  consoleOutput.scrollHeight - consoleOutput.scrollTop - consoleOutput.clientHeight <=
+  CONSOLE_BOTTOM_THRESHOLD_PX;
 
 const renderAll = () => {
   renderQueue();
