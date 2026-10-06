@@ -45,7 +45,13 @@ pub struct SteamAppInfo {
 pub fn fetch_app_info(appid: &str) -> Result<SteamAppInfo, String> {
     let url = format!("{}?appids={}", STEAM_STORE_API_URL, appid);
 
-    let response = reqwest::blocking::get(&url)
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+    let response = client
+        .get(&url)
+        .send()
         .map_err(|e| format!("Failed to fetch Steam app info: {}", e))?;
 
     if !response.status().is_success() {

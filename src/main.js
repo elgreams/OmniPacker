@@ -1656,6 +1656,19 @@ const setSavedLogin = (login) => {
 
 const hasSavedLogin = () => Boolean(authState.savedLogin);
 
+// When the user has not saved their login, wipe DepotDownloader's stored token
+// once a queue run ends. DD's -clear-token only rides on the final queued job
+// and only fires after a successful download, so a cancelled or failed queue
+// would otherwise leave a reusable token on disk.
+const clearStoredTokenIfUnsaved = () => {
+  if (hasSavedLogin() || !tauriInvoke) {
+    return;
+  }
+  void tauriInvoke("clear_dd_login_token").catch((error) => {
+    console.debug("[OmniPacker] Failed to clear stored login token:", error);
+  });
+};
+
 const createJob = ({ appId, os, branch, branchPassword, username, password, qrEnabled }) => {
   const job = {
     id: createJobId(),
@@ -2908,12 +2921,14 @@ if (tauriEvent?.listen) {
         closeSteamGuardEmailModal();
       }
       renderAll();
-      if (wasRunning && !wasCancelled && isTerminal) {
-        const nextJob = getNextQueuedJob();
+      if (wasRunning && isTerminal) {
+        const nextJob = wasCancelled ? null : getNextQueuedJob();
         if (nextJob) {
           void startJob();
         } else {
+          // The queue run is over (finished, failed out, or cancelled).
           authState.rememberedUsername = null;
+          clearStoredTokenIfUnsaved();
         }
       }
     }

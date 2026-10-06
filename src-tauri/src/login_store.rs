@@ -122,6 +122,28 @@ pub fn delete_login_data(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// File the DepotDownloader fork writes its saved login/refresh tokens to,
+/// inside the `-config-dir` OmniPacker passes (the portable-aware config dir).
+const DD_ACCOUNT_CONFIG_FILE_NAME: &str = "account.config";
+
+/// Deletes DepotDownloader's stored login token file.
+///
+/// The frontend calls this when a queue ends (completed, failed or cancelled)
+/// and the user has NOT saved their login. DD's own `-clear-token` only rides
+/// on the final queued job and only runs after a successful download, so a
+/// cancelled or failed queue used to leave a reusable token on disk.
+#[tauri::command]
+pub fn clear_dd_login_token(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let path =
+        crate::output_dir::resolve_config_dir(&app_handle)?.join(DD_ACCOUNT_CONFIG_FILE_NAME);
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| {
+            format!("Failed to delete stored login token at {}: {}", path.display(), e)
+        })?;
+    }
+    Ok(())
+}
+
 // --- Compression password store ---
 //
 // Same portable-aware location and OP1 payload format as login.dat. Kept out

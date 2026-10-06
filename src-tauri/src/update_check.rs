@@ -58,10 +58,20 @@ fn is_newer(latest: &str, current: &str) -> bool {
     parse_version(latest) > parse_version(current)
 }
 
+/// Async so it does not run on the main thread: Tauri executes plain sync
+/// commands on the event-loop thread, so the blocking HTTP call below froze the
+/// whole window for up to the request timeout on every launch over a slow
+/// network. The blocking reqwest client must not run inside the async runtime
+/// either (it panics there), so the request is moved onto a blocking worker.
 #[tauri::command]
-pub fn check_for_update(app_handle: AppHandle) -> Result<UpdateInfo, String> {
+pub async fn check_for_update(app_handle: AppHandle) -> Result<UpdateInfo, String> {
     let current = app_handle.package_info().version.to_string();
+    tauri::async_runtime::spawn_blocking(move || fetch_update_info(current))
+        .await
+        .map_err(|e| format!("Update check task failed: {e}"))?
+}
 
+fn fetch_update_info(current: String) -> Result<UpdateInfo, String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()

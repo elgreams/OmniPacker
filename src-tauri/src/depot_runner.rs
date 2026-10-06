@@ -415,11 +415,18 @@ fn derive_metadata_from_download(
     use std::fs;
 
     // Fetch game name (and store metadata for the crew template preset) from
-    // the Steam API. Description/website are best-effort: an API failure still
-    // yields a usable job via the app_<id> name fallback.
+    // the Steam store API. The store returns success=false for delisted,
+    // unreleased or otherwise storeless apps (and 429s under rate limiting), so
+    // fall back to the appinfo name from api.steamcmd.net before resorting to
+    // the bare app_<id> placeholder. Description/website stay best-effort.
     let (game_name, game_description, website) = match fetch_app_info(&job.app_id) {
         Ok(info) => (info.name, info.short_description, info.website),
-        Err(_) => (format!("app_{}", job.app_id), String::new(), None),
+        Err(err) => {
+            debug_eprintln!("[STEAM] Store lookup failed for {}: {}", job.app_id, err);
+            let name = crate::steamcmd_api::fetch_app_name(&job.app_id)
+                .unwrap_or_else(|| format!("app_{}", job.app_id));
+            (name, String::new(), None)
+        }
     };
 
     let depots_dir = staging_dir.join("depots");
@@ -769,7 +776,7 @@ enum CompressionError {
 }
 
 /// Path of the first volume 7-Zip writes when splitting (`archive.7z.001`).
-fn first_volume_path(archive_path: &std::path::Path) -> std::path::PathBuf {
+pub(crate) fn first_volume_path(archive_path: &std::path::Path) -> std::path::PathBuf {
     let mut name = archive_path.as_os_str().to_os_string();
     name.push(".001");
     std::path::PathBuf::from(name)
@@ -779,7 +786,7 @@ fn first_volume_path(archive_path: &std::path::Path) -> std::path::PathBuf {
 /// (`archive.7z`) and the split case (`archive.7z.001`, `.002`, …). 7-Zip does
 /// not pad volume numbers beyond three digits until they overflow, so we scan
 /// the directory for siblings sharing the archive file name as a prefix.
-fn remove_archive_outputs(archive_path: &std::path::Path) {
+pub(crate) fn remove_archive_outputs(archive_path: &std::path::Path) {
     let _ = std::fs::remove_file(archive_path);
 
     let (Some(parent), Some(file_name)) =

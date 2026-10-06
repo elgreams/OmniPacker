@@ -27,8 +27,8 @@ use depot_runner::{
 };
 use job_staging::cleanup_orphaned_staging;
 use login_store::{
-    delete_login_data, load_compression_password, load_login_data, save_compression_password,
-    save_login_data,
+    clear_dd_login_token, delete_login_data, load_compression_password, load_login_data,
+    save_compression_password, save_login_data,
 };
 use output_conflict::{resolve_output_conflict, OutputConflictState};
 use output_dir::{get_output_folder, open_output_folder};
@@ -175,6 +175,7 @@ pub fn run() {
             save_login_data,
             load_login_data,
             delete_login_data,
+            clear_dd_login_token,
             save_compression_password,
             load_compression_password,
             get_template_metadata,

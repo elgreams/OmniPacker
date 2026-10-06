@@ -37,7 +37,10 @@ fn fetch_appinfo(appid: &str) -> Result<Value, String> {
     let url = format!("https://api.steamcmd.net/v1/info/{}", appid);
     debug_eprintln!("[STEAMCMD] Fetching appinfo from: {}", url);
 
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
     let response = client
         .get(&url)
         .header("User-Agent", "OmniPacker/1.0")

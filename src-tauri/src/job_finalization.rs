@@ -52,16 +52,13 @@ pub fn finalize_job(
         None
     };
     let output_exists = final_output_path.exists();
-    let archive_exists = archive_path
-        .as_ref()
-        .map(|path| path.exists())
-        .unwrap_or(false);
+    let existing_archive = archive_path.as_deref().and_then(existing_archive_output);
 
-    if output_exists || archive_exists {
+    if output_exists || existing_archive.is_some() {
         let conflict_path = if output_exists {
             final_output_path.clone()
         } else {
-            archive_path
+            existing_archive
                 .clone()
                 .unwrap_or_else(|| final_output_path.clone())
         };
@@ -90,7 +87,15 @@ pub fn finalize_job(
     if overwrite_existing {
         remove_existing_output(&final_output_path)?;
         if let Some(path) = archive_path.as_ref() {
-            remove_existing_archive(path)?;
+            // Removes the single-file archive AND any split volumes
+            // (.7z.001, .002, ...) so a re-run never collides with them.
+            crate::depot_runner::remove_archive_outputs(path);
+            if let Some(left) = existing_archive_output(path) {
+                return Err(format!(
+                    "Failed to remove existing archive: {}",
+                    left.display()
+                ));
+            }
         }
     }
 
@@ -190,6 +195,24 @@ fn build_temp_output(
     fs::create_dir_all(&temp_dir)
         .map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
+    // A failure partway through assembly (most often a full disk while copying
+    // the game files) would otherwise leave a game-sized .tmp_<job> copy behind
+    // that nothing ever sweeps. Remove it before reporting the error.
+    assemble_temp_output(&temp_dir, staging_dir, metadata).inspect_err(|_| {
+        let _ = fs::remove_dir_all(&temp_dir);
+    })?;
+
+    Ok(temp_dir)
+}
+
+/// Fills `temp_dir` with the final Steam-style layout (steamapps/common,
+/// depotcache, .acf manifests). Split from `build_temp_output` so any error can
+/// be cleaned up in one place.
+fn assemble_temp_output(
+    temp_dir: &Path,
+    staging_dir: &Path,
+    metadata: &JobMetadataFile,
+) -> Result<(), String> {
     // Determine installdir: must match the on-disk folder name that all non-shared depot
     // files will be merged into. Steam's canonical `config.installdir` (e.g. "The Crust")
     // is the authoritative source and is used verbatim when available — including its spaces,
@@ -216,7 +239,7 @@ fn build_temp_output(
     // Transform depots/ → steamapps/common/ and collect manifests → depotcache/
     // Returns a map of depot_id → manifest_id and a map of depot_id → install-script path
     let (manifest_map, install_scripts) =
-        transform_depots_to_steamapps(staging_dir, &temp_dir, &install_dir_name)?;
+        transform_depots_to_steamapps(staging_dir, temp_dir, &install_dir_name)?;
 
     // Generate appmanifest_<appid>.acf and appmanifest_228980.acf (shared redistributables)
     let steamapps_dir = temp_dir.join("steamapps");
@@ -229,7 +252,7 @@ fn build_temp_output(
         .unwrap_or_else(|| "0".to_string());
     acf_generator::write_shared_depots_acf(&steamapps_dir, metadata, &common_dir, &manifest_map, &depot_sizes, &install_scripts, &shared_buildid)?;
 
-    Ok(temp_dir)
+    Ok(())
 }
 
 fn resolve_copy_output_path(
@@ -250,7 +273,8 @@ fn resolve_copy_output_path(
         if candidate.exists() {
             continue;
         }
-        if compression_enabled && resolve_archive_path(&candidate).exists() {
+        if compression_enabled && existing_archive_output(&resolve_archive_path(&candidate)).is_some()
+        {
             continue;
         }
         return Ok(candidate);
@@ -278,23 +302,17 @@ fn remove_existing_output(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn remove_existing_archive(path: &Path) -> Result<(), String> {
-    if !path.exists() {
-        return Ok(());
+/// Returns the path of an existing archive output for `archive_path`, covering
+/// both the single-file form (`X.7z`) and the split form (`X.7z.001`, ...).
+/// Split runs never create `X.7z` itself, so checking only that path missed a
+/// prior split output entirely: no conflict prompt, then 7-Zip refused to
+/// overwrite and the job "completed" with an uncompressed folder.
+fn existing_archive_output(archive_path: &Path) -> Option<PathBuf> {
+    if archive_path.exists() {
+        return Some(archive_path.to_path_buf());
     }
-
-    let metadata = fs::metadata(path)
-        .map_err(|e| format!("Failed to inspect existing archive: {}", e))?;
-
-    if metadata.is_dir() {
-        fs::remove_dir_all(path)
-            .map_err(|e| format!("Failed to remove existing archive directory: {}", e))?;
-    } else {
-        fs::remove_file(path)
-            .map_err(|e| format!("Failed to remove existing archive file: {}", e))?;
-    }
-
-    Ok(())
+    let first_volume = crate::depot_runner::first_volume_path(archive_path);
+    first_volume.exists().then_some(first_volume)
 }
 
 /// Computes per-depot file sizes from the staging directory structure.
@@ -634,6 +652,38 @@ mod tests {
             result,
             Some("_CommonRedist/vcredist/2012/installscript.vdf".to_string())
         );
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn existing_archive_output_detects_split_volumes() {
+        // Regression: a prior split run leaves X.7z.001 (never X.7z), which the
+        // conflict check used to miss entirely.
+        let root = temp_dir("split_conflict");
+        let archive = root.join("Game.Build.1.Win64.Public.7z");
+        assert_eq!(existing_archive_output(&archive), None);
+
+        fs::write(root.join("Game.Build.1.Win64.Public.7z.001"), b"x").unwrap();
+        assert_eq!(
+            existing_archive_output(&archive),
+            Some(root.join("Game.Build.1.Win64.Public.7z.001"))
+        );
+
+        // The copy-name search must also skip past a split-occupied name.
+        let candidate = resolve_copy_output_path(&root.join("Game.Build.1.Win64.Public"), true)
+            .unwrap();
+        assert_eq!(candidate, root.join("Game.Build.1.Win64.Public (1)"));
+        fs::write(root.join("Game.Build.1.Win64.Public (1).7z.001"), b"x").unwrap();
+        let candidate = resolve_copy_output_path(&root.join("Game.Build.1.Win64.Public"), true)
+            .unwrap();
+        assert_eq!(candidate, root.join("Game.Build.1.Win64.Public (2)"));
+
+        // Overwrite path: removing outputs clears every volume.
+        fs::write(root.join("Game.Build.1.Win64.Public.7z.002"), b"x").unwrap();
+        crate::depot_runner::remove_archive_outputs(&archive);
+        assert_eq!(existing_archive_output(&archive), None);
+        assert!(!root.join("Game.Build.1.Win64.Public.7z.002").exists());
 
         fs::remove_dir_all(&root).ok();
     }
