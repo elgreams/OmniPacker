@@ -441,6 +441,71 @@ fn select_primary_depot(
         .unwrap_or_default()
 }
 
+/// Everything [`resolve_depot_name`] needs to know about one depot.
+struct DepotNameInputs<'a> {
+    depot_id: &'a str,
+    is_primary: bool,
+    /// Owner appid when this is a shared/redist depot.
+    shared_owner: Option<&'a str>,
+    dlcappid: Option<&'a str>,
+    /// Name DepotDownloader printed for the depot (`Processing depot N "name"`).
+    parsed_name: Option<&'a str>,
+    game_name: &'a str,
+}
+
+/// Picks a depot's display name. The goal is a real app name wherever possible;
+/// a bare `depot_<id>` is a genuine last resort.
+///
+///   1. Primary depot             -> the game's own name
+///   2. Shared/redist depot        -> the owner app's real name (e.g. 228989 ->
+///      "Steamworks Common Redistributables")
+///   3. DLC depot (has dlcappid)   -> that DLC app's real name
+///   4. Name DepotDownloader printed, unless it's just the game's name echoed
+///      onto a non-primary depot. The fork falls back to "<app name> - <os>"
+///      for depots without their own name, so a redist printed as
+///      "Crimson Desert Enhanced - windows" is rejected too, not only an exact
+///      "Crimson Desert Enhanced".
+///   5. `depot_<id>`
+///
+/// `resolve_app_name` looks up an app's name (network, best-effort); `None`
+/// degrades to the next rule. Pure apart from that callback, so it's testable.
+fn resolve_depot_name(
+    inputs: &DepotNameInputs,
+    resolve_app_name: &mut dyn FnMut(&str) -> Option<String>,
+) -> String {
+    if inputs.is_primary {
+        return inputs.game_name.to_string();
+    }
+    if let Some(name) = inputs.shared_owner.and_then(&mut *resolve_app_name) {
+        return name;
+    }
+    if let Some(name) = inputs.dlcappid.and_then(&mut *resolve_app_name) {
+        return name;
+    }
+    if let Some(name) = inputs.parsed_name {
+        if !is_game_name_echo(name, inputs.game_name) {
+            return name.to_string();
+        }
+    }
+    format!("depot_{}", inputs.depot_id)
+}
+
+/// True when `name` is the game's own name, bare or with the fork's
+/// " - <oslist>" suffix (e.g. "Game - windows", "Game - windows,linux").
+fn is_game_name_echo(name: &str, game_name: &str) -> bool {
+    if name == game_name {
+        return true;
+    }
+    name.strip_prefix(game_name)
+        .and_then(|rest| rest.strip_prefix(" - "))
+        .is_some_and(|os| {
+            !os.is_empty()
+                && os
+                    .split(',')
+                    .all(|part| matches!(part.trim(), "windows" | "macos" | "linux"))
+        })
+}
+
 /// Derives metadata from downloaded content (for QR auth case where preflight was skipped)
 fn derive_metadata_from_download(
     app_handle: &AppHandle,
@@ -623,47 +688,21 @@ fn derive_metadata_from_download(
     };
 
     for depot in &mut depots {
-        let depot_id = depot.depot_id.clone();
-        let is_primary = depot_id == primary_depot_id;
-
-        // 1. Primary depot is the game itself.
-        if is_primary {
-            depot.depot_name = game_name.clone();
-            continue;
-        }
-
-        // 2. Shared/redist depot -> owner app's real name.
-        let shared_owner = shared_owners
-            .get(&depot_id)
-            .cloned()
-            .or_else(|| is_shared_depot(&depot_id).then(|| get_shared_depot_owner(&depot_id).to_string()));
-        if let Some(owner) = shared_owner {
-            if let Some(name) = resolve_app_name(&owner) {
-                depot.depot_name = name;
-                continue;
-            }
-        }
-
-        // 3. DLC depot -> that DLC's real name.
-        if let Some(dlcappid) = depot.dlcappid.as_deref() {
-            if let Some(name) = resolve_app_name(dlcappid) {
-                depot.depot_name = name;
-                continue;
-            }
-        }
-
-        // 4. Parsed stdout name, unless it's just the app's own name echoed onto a
-        //    non-primary depot (the redist mislabel) -- in that case skip it so we
-        //    fall through to a better source or the numeric last resort.
-        if let Some(name) = preflight_depot_names.get(&depot_id) {
-            if name != &game_name {
-                depot.depot_name = name.clone();
-                continue;
-            }
-        }
-
-        // 5. Last resort.
-        depot.depot_name = format!("depot_{}", depot_id);
+        let shared_owner = shared_owners.get(&depot.depot_id).cloned().or_else(|| {
+            is_shared_depot(&depot.depot_id)
+                .then(|| get_shared_depot_owner(&depot.depot_id).to_string())
+        });
+        depot.depot_name = resolve_depot_name(
+            &DepotNameInputs {
+                depot_id: &depot.depot_id,
+                is_primary: depot.depot_id == primary_depot_id,
+                shared_owner: shared_owner.as_deref(),
+                dlcappid: depot.dlcappid.as_deref(),
+                parsed_name: preflight_depot_names.get(&depot.depot_id).map(String::as_str),
+                game_name: &game_name,
+            },
+            &mut resolve_app_name,
+        );
     }
 
     // Normalize branch name (capitalize first letter)
@@ -2654,6 +2693,73 @@ mod tests {
         depot_sort_key, is_stale_build, map_os_selection, select_primary_depot, DepotInfo,
         DepotRunnerState, DownloadProgress,
     };
+
+    #[test]
+    fn depot_name_ladder() {
+        use super::{resolve_depot_name, DepotNameInputs};
+        let names = |id: &str| match id {
+            "228980" => Some("Steamworks Common Redistributables".to_string()),
+            "2379790" => Some("Balatro DLC".to_string()),
+            _ => None,
+        };
+        let base = DepotNameInputs {
+            depot_id: "1",
+            is_primary: false,
+            shared_owner: None,
+            dlcappid: None,
+            parsed_name: None,
+            game_name: "Crimson Desert Enhanced",
+        };
+        let run = |i: DepotNameInputs, online: bool| {
+            let mut lookup = |id: &str| if online { names(id) } else { None };
+            resolve_depot_name(&i, &mut lookup)
+        };
+
+        // 1. Primary wins over everything.
+        assert_eq!(
+            run(DepotNameInputs { is_primary: true, parsed_name: Some("X"), ..base }, true),
+            "Crimson Desert Enhanced"
+        );
+        // 2. Shared depot -> owner app name.
+        assert_eq!(
+            run(DepotNameInputs { shared_owner: Some("228980"), ..base }, true),
+            "Steamworks Common Redistributables"
+        );
+        // 3. DLC depot -> DLC app name.
+        assert_eq!(run(DepotNameInputs { dlcappid: Some("2379790"), ..base }, true), "Balatro DLC");
+        // 4. A real parsed name is used when lookups fail.
+        assert_eq!(
+            run(DepotNameInputs { parsed_name: Some("Soundtrack"), ..base }, false),
+            "Soundtrack"
+        );
+        // 4. Regression (Crimson Desert log): redist 228989 printed as
+        //    "<game> - windows". Offline, that must not become its name.
+        assert_eq!(
+            run(
+                DepotNameInputs {
+                    depot_id: "228989",
+                    shared_owner: Some("228980"),
+                    parsed_name: Some("Crimson Desert Enhanced - windows"),
+                    ..base
+                },
+                false
+            ),
+            "depot_228989"
+        );
+        // 5. Nothing usable.
+        assert_eq!(run(base, false), "depot_1");
+    }
+
+    #[test]
+    fn game_name_echo_detection() {
+        use super::is_game_name_echo;
+        assert!(is_game_name_echo("Game", "Game"));
+        assert!(is_game_name_echo("Game - windows", "Game"));
+        assert!(is_game_name_echo("Game - windows,linux", "Game"));
+        assert!(!is_game_name_echo("Game - Soundtrack", "Game"));
+        assert!(!is_game_name_echo("Game Demo", "Game"));
+        assert!(!is_game_name_echo("Other - windows", "Game"));
+    }
 
     #[test]
     fn parses_dd_branch_fallback_warning() {
