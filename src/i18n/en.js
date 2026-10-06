@@ -210,6 +210,8 @@ export default {
   "job.starting": "Starting DepotDownloader for AppID {{appId}}...",
   "job.startFailed": "Start failed: {{error}}",
   "job.canceling": "[system] Cancelling job...",
+  "job.cancelConfirm.title": "Cancel Job?",
+  "job.cancelConfirm.message": "Cancel the running job? Download or compression progress for this job will be lost.",
   "job.cancelled": "[system] Job cancelled by user.",
   "job.cancelFailed": "[system] Cancel failed: {{error}}",
   "output.unavailable": "Tauri invoke API unavailable. Unable to open folder.",

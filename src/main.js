@@ -968,6 +968,9 @@ const openGenericConfirm = (title, message) => {
     genericConfirmResolve = null;
   }
   templateGenericConfirmOverlay.classList.add("active");
+  // Default to "No": a stray Enter/Space (the trigger button may still hold
+  // focus) must never confirm a destructive action.
+  templateGenericConfirmNo?.focus();
   return new Promise((resolve) => {
     genericConfirmResolve = resolve;
   });
@@ -2920,6 +2923,10 @@ if (tauriEvent?.listen) {
       const wasCancelled = event.payload?.status === "cancelled";
       if (wasRunning && isTerminal) {
         jobState.runningJobId = null;
+        // A cancel-confirm left open is moot once the job has ended.
+        if (cancelConfirmOpen) {
+          closeGenericConfirm(false);
+        }
         closeQrModal();
         closeSteamGuardModal();
         closeSteamGuardEmailModal();
@@ -3144,6 +3151,10 @@ const startJob = async () => {
   }
 };
 
+// True while the cancel-confirm dialog is up, so a job ending on its own can
+// dismiss it (the dialog is shared with the template editor).
+let cancelConfirmOpen = false;
+
 const cancelJob = async () => {
   if (!jobState.runningJobId) {
     console.debug("[OmniPacker] No job is running.");
@@ -3153,6 +3164,21 @@ const cancelJob = async () => {
   const job = jobState.jobs.get(jobState.runningJobId);
   if (!job) {
     console.warn("[OmniPacker] Running job not found in state.");
+    return;
+  }
+
+  // The Start button becomes Cancel and keeps keyboard focus, so a stray
+  // Enter/Space hours into a large download or compression used to kill the
+  // job outright. Require an explicit confirmation.
+  cancelConfirmOpen = true;
+  const confirmed = await openGenericConfirm(
+    t("job.cancelConfirm.title"),
+    t("job.cancelConfirm.message"),
+  ).finally(() => {
+    cancelConfirmOpen = false;
+  });
+  // The job may have finished (or the queue moved on) while the dialog was up.
+  if (!confirmed || jobState.runningJobId !== job.id) {
     return;
   }
 

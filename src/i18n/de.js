@@ -210,6 +210,8 @@ export default {
   "job.starting": "DepotDownloader wird für AppID {{appId}} gestartet...",
   "job.startFailed": "Start fehlgeschlagen: {{error}}",
   "job.canceling": "[system] Job wird abgebrochen...",
+  "job.cancelConfirm.title": "Auftrag abbrechen?",
+  "job.cancelConfirm.message": "Den laufenden Auftrag abbrechen? Der Download- oder Komprimierungsfortschritt dieses Auftrags geht verloren.",
   "job.cancelled": "[system] Job vom Benutzer abgebrochen.",
   "job.cancelFailed": "[system] Abbruch fehlgeschlagen: {{error}}",
   "output.unavailable": "Tauri invoke API nicht verfügbar. Ordner kann nicht geöffnet werden.",

@@ -210,6 +210,8 @@ export default {
   "job.starting": "Запуск DepotDownloader для AppID {{appId}}...",
   "job.startFailed": "Запуск не удался: {{error}}",
   "job.canceling": "[system] Отмена задания...",
+  "job.cancelConfirm.title": "Отменить задачу?",
+  "job.cancelConfirm.message": "Отменить текущую задачу? Прогресс загрузки или сжатия для этой задачи будет потерян.",
   "job.cancelled": "[system] Задание отменено пользователем.",
   "job.cancelFailed": "[system] Не удалось отменить: {{error}}",
   "output.unavailable": "Tauri invoke API недоступен. Невозможно открыть папку.",

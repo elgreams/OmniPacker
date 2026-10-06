@@ -210,6 +210,8 @@ export default {
   "job.starting": "Démarrage de DepotDownloader pour l'AppID {{appId}}...",
   "job.startFailed": "Échec du démarrage: {{error}}",
   "job.canceling": "[system] Annulation de la tâche...",
+  "job.cancelConfirm.title": "Annuler la tâche ?",
+  "job.cancelConfirm.message": "Annuler la tâche en cours ? La progression du téléchargement ou de la compression de cette tâche sera perdue.",
   "job.cancelled": "[system] Tâche annulée par l'utilisateur.",
   "job.cancelFailed": "[system] Échec de l'annulation: {{error}}",
   "output.unavailable": "L'API invoke de Tauri est indisponible. Impossible d'ouvrir le dossier.",
