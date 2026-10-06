@@ -12,6 +12,7 @@ export default {
   "queue.appIdInvalid": "Пожалуйста, введите числовой Steam AppID перед добавлением в очередь.",
   "queue.meta": "Ветка: {{branch}} • ОС: {{os}}",
   "queue.depotCounter": "{{completed}}/{{total}} депо",
+  "queue.buildMismatch": "⚠ Старая сборка: получена {{downloaded}}, последняя {{latest}}",
   "queue.status.queued": "в очереди",
   "queue.status.running": "выполняется",
   "queue.status.downloading": "Загрузка",

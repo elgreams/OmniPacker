@@ -731,6 +731,8 @@ fn derive_metadata_from_download(
     // finalization; otherwise finalization falls back to the depot/game name.
     job_metadata.install_dir = crate::steamcmd_api::fetch_install_dir(&job.app_id);
 
+    check_downloaded_build_is_current(app_handle, job, job_id, &job_metadata.build_id);
+
     // Write job.json
     job_metadata.write_to_dir(staging_dir)?;
 
@@ -742,6 +744,84 @@ fn derive_metadata_from_download(
     );
 
     Ok(())
+}
+
+/// Payload for `dd:build_mismatch`: the build Steam actually served is older
+/// than the branch's current build per a second, independent source.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BuildMismatchPayload {
+    job_id: String,
+    downloaded_build: String,
+    latest_build: String,
+}
+
+/// True when `latest` is a strictly newer numeric build ID than `downloaded`.
+/// Non-numeric or equal IDs never warn; an *older* `latest` means the mirror is
+/// lagging, not that Steam served a stale build, so that doesn't warn either.
+fn is_stale_build(downloaded: &str, latest: &str) -> bool {
+    match (downloaded.trim().parse::<u64>(), latest.trim().parse::<u64>()) {
+        (Ok(d), Ok(l)) => l > d,
+        _ => false,
+    }
+}
+
+/// Compares the build DepotDownloader actually downloaded against the branch's
+/// current build from api.steamcmd.net (fetched fresh, not from the session
+/// cache). Steam sometimes keeps serving the previous manifest for a while after
+/// a branch updates, or a build shows on SteamDB before it is set live; both
+/// look like "it downloaded the old build" with nothing in the UI saying so.
+///
+/// Best-effort and non-fatal: logs both build IDs and emits `dd:build_mismatch`
+/// so the queue row shows a warning. The job continues either way.
+fn check_downloaded_build_is_current(
+    app_handle: &AppHandle,
+    job: &JobMetadata,
+    job_id: &str,
+    downloaded_build: &str,
+) {
+    let branch = if job.branch.trim().is_empty() { "public" } else { job.branch.trim() };
+    let Some(latest_build) = crate::steamcmd_api::fetch_branch_buildid_fresh(&job.app_id, branch)
+    else {
+        emit_log(
+            app_handle,
+            "system",
+            &format!(
+                "Build check: downloaded build {downloaded_build}; current {branch} build unavailable for comparison."
+            ),
+            job_id,
+        );
+        return;
+    };
+
+    if is_stale_build(downloaded_build, &latest_build) {
+        emit_log(
+            app_handle,
+            "system",
+            &format!(
+                "WARNING: Steam served build {downloaded_build}, but the current {branch} build appears to be {latest_build}. \
+                 The new build may not be live yet or Steam's servers are still updating; try again later."
+            ),
+            job_id,
+        );
+        let _ = app_handle.emit(
+            "dd:build_mismatch",
+            BuildMismatchPayload {
+                job_id: job_id.to_string(),
+                downloaded_build: downloaded_build.to_string(),
+                latest_build,
+            },
+        );
+    } else {
+        emit_log(
+            app_handle,
+            "system",
+            &format!(
+                "Build check: downloaded build {downloaded_build} (current {branch} build: {latest_build})."
+            ),
+            job_id,
+        );
+    }
 }
 
 /// Maps OS selection to platform string for output naming (duplicated from metadata_resolver)
@@ -2412,9 +2492,21 @@ fn is_executable(path: &PathBuf) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        depot_sort_key, map_os_selection, select_primary_depot, DepotInfo, DepotRunnerState,
-        DownloadProgress,
+        depot_sort_key, is_stale_build, map_os_selection, select_primary_depot, DepotInfo,
+        DepotRunnerState, DownloadProgress,
     };
+
+    #[test]
+    fn stale_build_only_when_latest_is_newer() {
+        // Lantern of the Laughless Saint: downloaded 24812169 while public moved on.
+        assert!(is_stale_build("24812169", "25446194"));
+        assert!(!is_stale_build("25446194", "25446194"));
+        // Mirror lagging behind Steam: not a stale download.
+        assert!(!is_stale_build("25446194", "24812169"));
+        // Unparseable IDs never warn.
+        assert!(!is_stale_build("", "25446194"));
+        assert!(!is_stale_build("abc", "25446194"));
+    }
 
     fn depot(id: &str, dlcappid: Option<&str>) -> DepotInfo {
         DepotInfo {

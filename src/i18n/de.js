@@ -12,6 +12,7 @@ export default {
   "queue.appIdInvalid": "Bitte eine numerische Steam-AppID eingeben, bevor sie zur Warteschlange hinzugefügt wird.",
   "queue.meta": "Branch: {{branch}} • OS: {{os}}",
   "queue.depotCounter": "{{completed}}/{{total}} Depots",
+  "queue.buildMismatch": "⚠ Alter Build: {{downloaded}} erhalten, aktuell ist {{latest}}",
   "queue.status.queued": "in Warteschlange",
   "queue.status.running": "läuft",
   "queue.status.downloading": "Wird heruntergeladen",

@@ -12,6 +12,7 @@ export default {
   "queue.appIdInvalid": "Please enter a numeric Steam AppID before adding to the queue.",
   "queue.meta": "Branch: {{branch}} • OS: {{os}}",
   "queue.depotCounter": "{{completed}}/{{total}} depots",
+  "queue.buildMismatch": "⚠ Old build: got {{downloaded}}, latest is {{latest}}",
   "queue.status.queued": "queued",
   "queue.status.running": "running",
   "queue.status.downloading": "Downloading",

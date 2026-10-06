@@ -12,6 +12,7 @@ export default {
   "queue.appIdInvalid": "Introduce un AppID de Steam numérico antes de añadir a la cola.",
   "queue.meta": "Rama: {{branch}} • SO: {{os}}",
   "queue.depotCounter": "{{completed}}/{{total}} depósitos",
+  "queue.buildMismatch": "⚠ Build antigua: se obtuvo {{downloaded}}, la última es {{latest}}",
   "queue.status.queued": "en cola",
   "queue.status.running": "en ejecución",
   "queue.status.downloading": "Descargando",

@@ -33,6 +33,13 @@ fn fetch_appinfo(appid: &str) -> Result<Value, String> {
             }
         }
     }
+    fetch_appinfo_uncached(appid)
+}
+
+/// Always hits the network, then refreshes the cache entry. Used where a
+/// session-old answer would be wrong (the post-download build check), and so
+/// every later lookup in the same job sees the fresh data too.
+fn fetch_appinfo_uncached(appid: &str) -> Result<Value, String> {
 
     let url = format!("https://api.steamcmd.net/v1/info/{}", appid);
     debug_eprintln!("[STEAMCMD] Fetching appinfo from: {}", url);
@@ -229,6 +236,34 @@ pub fn fetch_install_dir(appid: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// Returns the current buildid of `branch` for an app, fetched fresh (never
+/// from the session cache). `None` when the lookup fails or the branch isn't
+/// listed (e.g. a password-protected beta the mirror can't see).
+pub fn fetch_branch_buildid_fresh(appid: &str, branch: &str) -> Option<String> {
+    match fetch_appinfo_uncached(appid) {
+        Ok(data) => parse_branch_buildid(&data, branch),
+        Err(err) => {
+            debug_eprintln!("[STEAMCMD] branch buildid lookup unavailable for {}: {}", appid, err);
+            None
+        }
+    }
+}
+
+/// Pure parser behind [`fetch_branch_buildid_fresh`]. Branch names are matched
+/// case-insensitively (Steam keys are lowercase; users may type "Beta").
+fn parse_branch_buildid(app_data: &Value, branch: &str) -> Option<String> {
+    let branch = if branch.trim().is_empty() { "public" } else { branch.trim() };
+    app_data
+        .get("depots")
+        .and_then(|d| d.get("branches"))
+        .and_then(|b| b.as_object())?
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(branch))
+        .and_then(|(_, info)| info.get("buildid"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
 /// Clears the appinfo cache (useful for testing or forcing refresh).
 #[allow(dead_code)]
 pub fn clear_cache() {
@@ -356,6 +391,20 @@ mod tests {
         });
         let map = parse_shared_depots(&data, "555");
         assert_eq!(map.get("999"), Some(&"555".to_string()));
+    }
+
+    #[test]
+    fn test_parse_branch_buildid() {
+        let data = serde_json::json!({
+            "depots": { "branches": {
+                "public": { "buildid": "25446194" },
+                "beta": { "buildid": "25500000", "pwdrequired": "1" }
+            }}
+        });
+        assert_eq!(parse_branch_buildid(&data, "public").as_deref(), Some("25446194"));
+        assert_eq!(parse_branch_buildid(&data, "").as_deref(), Some("25446194"));
+        assert_eq!(parse_branch_buildid(&data, "Beta").as_deref(), Some("25500000"));
+        assert_eq!(parse_branch_buildid(&data, "missing"), None);
     }
 
     #[test]

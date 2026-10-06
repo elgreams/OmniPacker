@@ -1692,6 +1692,9 @@ const createJob = ({ appId, os, branch, branchPassword, username, password, qrEn
     qrCaptureActive: false,
     qrCaptureLines: [],
     steamGuardEmailPending: false,
+    // Set by dd:build_mismatch when Steam served an older build than the
+    // branch's current one: { downloadedBuild, latestBuild }.
+    buildMismatch: null,
     backendJobId: null, // Job ID assigned by backend (staging directory name)
     stagingDir: null, // Staging directory path
   };
@@ -2080,6 +2083,7 @@ const resetJobForRetry = (job) => {
   job.qrCaptureLines = [];
   job.steamGuardPending = false;
   job.steamGuardEmailPending = false;
+  job.buildMismatch = null;
 };
 
 const requestSteamGuardEmailRetry = (job) => {
@@ -2946,6 +2950,20 @@ if (tauriEvent?.listen) {
     openOutputConflictModal(payload);
   });
 
+  tauriEvent.listen("dd:build_mismatch", (event) => {
+    const payload = event.payload ?? {};
+    const job = resolveEventJob(payload);
+    if (!job) {
+      warnOrphanEvent("dd:build_mismatch", payload);
+      return;
+    }
+    job.buildMismatch = {
+      downloadedBuild: String(payload.downloadedBuild ?? ""),
+      latestBuild: String(payload.latestBuild ?? ""),
+    };
+    renderQueue();
+  });
+
   // Listen for DepotDownloader download progress
   tauriEvent.listen("dd:progress", (event) => {
     const payload = event.payload ?? {};
@@ -3509,6 +3527,16 @@ const renderQueue = () => {
     }
 
     row.appendChild(meta);
+
+    if (job.buildMismatch) {
+      const warning = document.createElement("div");
+      warning.className = "queue-item-warning";
+      warning.textContent = t("queue.buildMismatch", {
+        downloaded: job.buildMismatch.downloadedBuild,
+        latest: job.buildMismatch.latestBuild,
+      });
+      row.appendChild(warning);
+    }
 
     row.addEventListener("click", () => {
       jobState.selectedJobId = job.id;

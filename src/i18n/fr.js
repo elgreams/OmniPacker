@@ -12,6 +12,7 @@ export default {
   "queue.appIdInvalid": "Veuillez saisir un AppID Steam numérique avant de l'ajouter à la file.",
   "queue.meta": "Branche : {{branch}} • OS : {{os}}",
   "queue.depotCounter": "{{completed}}/{{total}} dépôts",
+  "queue.buildMismatch": "⚠ Ancien build : {{downloaded}} reçu, le dernier est {{latest}}",
   "queue.status.queued": "en file",
   "queue.status.running": "en cours",
   "queue.status.downloading": "Téléchargement",
