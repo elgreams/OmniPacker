@@ -746,6 +746,33 @@ fn derive_metadata_from_download(
     Ok(())
 }
 
+/// Max overwritten paths listed per depot in the log; the rest are counted.
+const COLLISION_SAMPLE_FILES: usize = 10;
+
+/// Log lines describing files one game depot overwrote from another while
+/// merging into the install folder. Empty when there were no collisions.
+fn describe_depot_collisions(
+    collisions: &[crate::job_finalization::DepotCollision],
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    for collision in collisions {
+        lines.push(format!(
+            "WARNING: depot {} overwrote {} file(s) from another depot in the same install folder. \
+             The download may mix two variants of the game (e.g. a regional depot); check the depot list.",
+            collision.depot_id,
+            collision.files.len()
+        ));
+        for file in collision.files.iter().take(COLLISION_SAMPLE_FILES) {
+            lines.push(format!("  overwritten: {file}"));
+        }
+        let rest = collision.files.len().saturating_sub(COLLISION_SAMPLE_FILES);
+        if rest > 0 {
+            lines.push(format!("  ...and {rest} more"));
+        }
+    }
+    lines
+}
+
 /// Payload for `dd:build_mismatch`: the build Steam actually served is older
 /// than the branch's current build per a second, independent source.
 #[derive(Clone, Serialize)]
@@ -1461,13 +1488,17 @@ fn run_depotdownloader_worker(
                     &job_id_for_monitor,
                     compression_enabled,
                 ) {
-                    Ok(output_path) => {
+                    Ok(finalized) => {
+                        let output_path = finalized.path;
                         emit_log(
                             &app_handle_clone,
                             "system",
                             &format!("Finalization complete. Output: {}", output_path.display()),
                             &job_id_for_monitor,
                         );
+                        for line in describe_depot_collisions(&finalized.collisions) {
+                            emit_log(&app_handle_clone, "system", &line, &job_id_for_monitor);
+                        }
                         if let Ok(metadata) =
                             JobMetadataFile::read_from_dir(&staging_dir_for_monitor)
                         {
@@ -2495,6 +2526,21 @@ mod tests {
         depot_sort_key, is_stale_build, map_os_selection, select_primary_depot, DepotInfo,
         DepotRunnerState, DownloadProgress,
     };
+
+    #[test]
+    fn collision_log_samples_and_counts() {
+        use crate::job_finalization::DepotCollision;
+        assert!(super::describe_depot_collisions(&[]).is_empty());
+
+        let files: Vec<String> = (0..12).map(|i| format!("Game/file{i:02}")).collect();
+        let lines = super::describe_depot_collisions(&[DepotCollision {
+            depot_id: "2593343".into(),
+            files,
+        }]);
+        assert!(lines[0].contains("depot 2593343 overwrote 12 file(s)"));
+        assert_eq!(lines.len(), 1 + 10 + 1);
+        assert_eq!(lines.last().unwrap(), "  ...and 2 more");
+    }
 
     #[test]
     fn stale_build_only_when_latest_is_newer() {

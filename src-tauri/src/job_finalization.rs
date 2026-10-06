@@ -11,6 +11,29 @@ use crate::output_conflict::{request_output_conflict_resolution, OutputConflictC
 use crate::output_dir::{resolve_outputs_dir, resolve_scratch_dir};
 use crate::steam_api::{sanitize_game_name, sanitize_install_dir};
 
+/// Result of a successful finalization.
+pub struct FinalizedOutput {
+    /// Path to the final output directory.
+    pub path: PathBuf,
+    /// Files one game depot overwrote from another during the merge.
+    pub collisions: Vec<DepotCollision>,
+}
+
+/// A non-shared depot that overwrote files already placed by an earlier depot.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DepotCollision {
+    pub depot_id: String,
+    /// Overwritten paths, relative to steamapps/common, forward slashes.
+    pub files: Vec<String>,
+}
+
+/// (depot_id → manifest_id, depot_id → install-script path, collisions)
+type DepotTransform = (
+    HashMap<String, String>,
+    HashMap<String, String>,
+    Vec<DepotCollision>,
+);
+
 /// Finalizes a job by moving staging output to final output directory
 ///
 /// This is the main entry point called after DepotDownloader exits successfully.
@@ -21,7 +44,7 @@ use crate::steam_api::{sanitize_game_name, sanitize_install_dir};
 /// * `compression_enabled` - Whether compression runs after finalization
 ///
 /// # Returns
-/// * `Ok(PathBuf)` - Path to the final output directory
+/// * `Ok(FinalizedOutput)` - Final output directory plus any depot collisions
 /// * `Err(String)` - Human-readable error message
 ///
 /// # Guarantees
@@ -33,7 +56,7 @@ pub fn finalize_job(
     app_handle: &AppHandle,
     job_id: &str,
     compression_enabled: bool,
-) -> Result<PathBuf, String> {
+) -> Result<FinalizedOutput, String> {
     // Step 1: Load job.json from staging
     let staging_dir = resolve_staging_dir(app_handle, job_id)?;
     let job_metadata = load_and_validate_metadata(&staging_dir)?;
@@ -81,7 +104,8 @@ pub fn finalize_job(
     }
 
     // Step 5: Build output in temp directory
-    let temp_output_path = build_temp_output(app_handle, job_id, &staging_dir, &job_metadata)?;
+    let (temp_output_path, collisions) =
+        build_temp_output(app_handle, job_id, &staging_dir, &job_metadata)?;
 
     // Step 6: Remove existing output if overwrite was selected
     if overwrite_existing {
@@ -101,7 +125,10 @@ pub fn finalize_job(
 
     // Step 7: Atomic rename: temp → final
     match atomic_finalize(&temp_output_path, &final_output_path) {
-        Ok(()) => Ok(final_output_path),
+        Ok(()) => Ok(FinalizedOutput {
+            path: final_output_path,
+            collisions,
+        }),
         Err(e) => {
             // Cleanup temp directory on failure
             let _ = fs::remove_dir_all(&temp_output_path);
@@ -179,7 +206,7 @@ fn build_temp_output(
     job_id: &str,
     staging_dir: &Path,
     metadata: &JobMetadataFile,
-) -> Result<PathBuf, String> {
+) -> Result<(PathBuf, Vec<DepotCollision>), String> {
     // Temp assembly lives in the scratch dir, which is on the same volume as the
     // final outputs dir (a hidden subfolder of the custom output dir, or <base>
     // by default), so the temp → final move stays an atomic rename.
@@ -198,11 +225,11 @@ fn build_temp_output(
     // A failure partway through assembly (most often a full disk while copying
     // the game files) would otherwise leave a game-sized .tmp_<job> copy behind
     // that nothing ever sweeps. Remove it before reporting the error.
-    assemble_temp_output(&temp_dir, staging_dir, metadata).inspect_err(|_| {
+    let collisions = assemble_temp_output(&temp_dir, staging_dir, metadata).inspect_err(|_| {
         let _ = fs::remove_dir_all(&temp_dir);
     })?;
 
-    Ok(temp_dir)
+    Ok((temp_dir, collisions))
 }
 
 /// Fills `temp_dir` with the final Steam-style layout (steamapps/common,
@@ -212,7 +239,7 @@ fn assemble_temp_output(
     temp_dir: &Path,
     staging_dir: &Path,
     metadata: &JobMetadataFile,
-) -> Result<(), String> {
+) -> Result<Vec<DepotCollision>, String> {
     // Determine installdir: must match the on-disk folder name that all non-shared depot
     // files will be merged into. Steam's canonical `config.installdir` (e.g. "The Crust")
     // is the authoritative source and is used verbatim when available — including its spaces,
@@ -238,7 +265,7 @@ fn assemble_temp_output(
 
     // Transform depots/ → steamapps/common/ and collect manifests → depotcache/
     // Returns a map of depot_id → manifest_id and a map of depot_id → install-script path
-    let (manifest_map, install_scripts) =
+    let (manifest_map, install_scripts, collisions) =
         transform_depots_to_steamapps(staging_dir, temp_dir, &install_dir_name)?;
 
     // Generate appmanifest_<appid>.acf and appmanifest_228980.acf (shared redistributables)
@@ -252,7 +279,7 @@ fn assemble_temp_output(
         .unwrap_or_else(|| "0".to_string());
     acf_generator::write_shared_depots_acf(&steamapps_dir, metadata, &common_dir, &manifest_map, &depot_sizes, &install_scripts, &shared_buildid)?;
 
-    Ok(())
+    Ok(collisions)
 }
 
 fn resolve_copy_output_path(
@@ -395,11 +422,12 @@ where
 /// - map of depot_id → actual manifest_id (extracted from .manifest filenames)
 /// - map of depot_id → install-script path, relative to the depot's installdir, using
 ///   Windows-style backslashes (only populated for depots that ship an `installscript.vdf`)
+/// - files a later non-shared depot overwrote during the merge (see [`DepotCollision`])
 fn transform_depots_to_steamapps(
     staging_dir: &Path,
     temp_dir: &Path,
     install_dir_name: &str,
-) -> Result<(HashMap<String, String>, HashMap<String, String>), String> {
+) -> Result<DepotTransform, String> {
     use crate::shared_depots::{get_shared_depot_install_dir, is_shared_depot};
 
     let depots_dir = staging_dir.join("depots");
@@ -417,11 +445,21 @@ fn transform_depots_to_steamapps(
     fs::create_dir_all(&depotcache_dir)
         .map_err(|e| format!("Failed to create depotcache/: {}", e))?;
 
-    // Iterate through each depot directory
-    for entry in fs::read_dir(&depots_dir)
+    // Files overwritten by a later non-shared depot during the merge.
+    let mut collisions: Vec<DepotCollision> = Vec::new();
+
+    // Merge in numeric depot-ID order. read_dir order is filesystem-dependent,
+    // so when depots overlap, which one's file survived used to vary by OS.
+    let mut depot_entries: Vec<_> = fs::read_dir(&depots_dir)
         .map_err(|e| format!("Failed to read depots directory: {}", e))?
-    {
-        let entry = entry.map_err(|e| format!("Failed to read depot entry: {}", e))?;
+        .collect::<Result<_, _>>()
+        .map_err(|e| format!("Failed to read depot entry: {}", e))?;
+    depot_entries.sort_by_key(|entry| {
+        let name = entry.file_name().to_string_lossy().to_string();
+        (name.parse::<u64>().unwrap_or(u64::MAX), name)
+    });
+
+    for entry in depot_entries {
         let depot_path = entry.path();
 
         if !depot_path.is_dir() {
@@ -508,12 +546,33 @@ fn transform_depots_to_steamapps(
         // was staging + copy + archive, ~3x the game) nor an hour of copying.
         // Staging is discarded after finalization either way. The
         // .DepotDownloader bookkeeping dir is filtered out and stays in staging.
-        move_dir_merge(&manifest_dir, &target_dir, |path| {
-            !path.file_name().map(|n| n == ".DepotDownloader").unwrap_or(false)
-        })?;
+        let mut replaced = Vec::new();
+        move_dir_merge(
+            &manifest_dir,
+            &target_dir,
+            |path| !path.file_name().map(|n| n == ".DepotDownloader").unwrap_or(false),
+            &mut replaced,
+        )?;
+
+        // Shared redist depots overlapping each other is normal; two game
+        // depots writing the same file is not (e.g. a global and a Steam China
+        // depot both selected), and the later depot silently won.
+        if !is_shared_depot(&depot_id) && !replaced.is_empty() {
+            let mut files: Vec<String> = replaced
+                .iter()
+                .map(|p| {
+                    p.strip_prefix(&steamapps_common_dir)
+                        .unwrap_or(p)
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                })
+                .collect();
+            files.sort();
+            collisions.push(DepotCollision { depot_id: depot_id.clone(), files });
+        }
     }
 
-    Ok((manifest_map, install_scripts))
+    Ok((manifest_map, install_scripts, collisions))
 }
 
 /// Searches a depot's content root for an `installscript.vdf` and returns its path
@@ -586,13 +645,19 @@ fn atomic_finalize(temp_path: &Path, final_path: &Path) -> Result<(), String> {
 /// Entries whose destination doesn't exist yet are renamed wholesale (a whole
 /// subtree in one cheap metadata operation). When both sides are directories
 /// the move recurses so multiple depots can merge into one install folder. An
-/// existing destination file is replaced, matching the previous copy-merge.
+/// existing destination file is replaced, matching the previous copy-merge,
+/// and its path is pushed to `replaced` so the caller can report collisions.
 ///
 /// If a rename fails (e.g. the scratch dir somehow spans volumes), that entry
 /// falls back to copy-then-delete, so the result is the same, just slower.
 ///
 /// `filter` receives each source path; returning false leaves it in `src`.
-fn move_dir_merge<F>(src: &Path, dst: &Path, filter: F) -> Result<(), String>
+fn move_dir_merge<F>(
+    src: &Path,
+    dst: &Path,
+    filter: F,
+    replaced: &mut Vec<PathBuf>,
+) -> Result<(), String>
 where
     F: Fn(&Path) -> bool + Copy,
 {
@@ -617,8 +682,12 @@ where
         let src_is_dir = src_path.is_dir();
 
         if src_is_dir && dst_path.is_dir() {
-            move_dir_merge(&src_path, &dst_path, filter)?;
+            move_dir_merge(&src_path, &dst_path, filter, replaced)?;
             continue;
+        }
+
+        if !src_is_dir && dst_path.is_file() {
+            replaced.push(dst_path.clone());
         }
 
         if fs::rename(&src_path, &dst_path).is_ok() {
@@ -747,8 +816,10 @@ mod tests {
 
         let target = root.join("out/steamapps/common/Game");
         let keep_dd = |p: &Path| !p.file_name().map(|n| n == ".DepotDownloader").unwrap_or(false);
-        move_dir_merge(&depot_a, &target, keep_dd).unwrap();
-        move_dir_merge(&depot_b, &target, keep_dd).unwrap();
+        let mut replaced = Vec::new();
+        move_dir_merge(&depot_a, &target, keep_dd, &mut replaced).unwrap();
+        move_dir_merge(&depot_b, &target, keep_dd, &mut replaced).unwrap();
+        assert!(replaced.is_empty(), "no overlapping files, no collisions");
 
         assert_eq!(fs::read(target.join("bin/game.exe")).unwrap(), b"exe");
         assert_eq!(fs::read(target.join("bin/extra.dll")).unwrap(), b"dll");
@@ -765,6 +836,44 @@ mod tests {
     }
 
     #[test]
+    fn transform_reports_game_depot_collisions_in_id_order() {
+        // Wonderia shape: global (2593341) and Steam China (2593343) Windows
+        // depots both downloaded, same files. The higher ID merges last and its
+        // overwrites are reported. Overlapping shared redists are not.
+        let root = temp_dir("collisions");
+        let staging = root.join("staging");
+        let out = root.join("out");
+        let put = |depot: &str, rel: &str, body: &[u8]| {
+            let p = staging.join("depots").join(depot).join("25669041").join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, body).unwrap();
+        };
+        put("2593343", "Wonderia.exe", b"china");
+        put("2593343", "data/a.pak", b"china");
+        put("2593341", "Wonderia.exe", b"global");
+        put("2593341", "data/a.pak", b"global");
+        put("2593341", "data/global_only.pak", b"global");
+        put("228989", "_CommonRedist/vcredist/2022/installscript.vdf", b"x");
+        put("228990", "_CommonRedist/vcredist/2022/installscript.vdf", b"y");
+
+        let (_, _, collisions) = transform_depots_to_steamapps(&staging, &out, "Wonderia").unwrap();
+
+        assert_eq!(
+            collisions,
+            vec![DepotCollision {
+                depot_id: "2593343".into(),
+                files: vec!["Wonderia/Wonderia.exe".into(), "Wonderia/data/a.pak".into()],
+            }]
+        );
+        // Deterministic: the numerically-later depot's content wins.
+        let game = out.join("steamapps/common/Wonderia");
+        assert_eq!(fs::read(game.join("Wonderia.exe")).unwrap(), b"china");
+        assert!(game.join("data/global_only.pak").exists());
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
     fn move_dir_merge_replaces_existing_file() {
         let root = temp_dir("move_replace");
         let src = root.join("src");
@@ -774,8 +883,10 @@ mod tests {
         fs::write(src.join("same.txt"), b"new").unwrap();
         fs::write(dst.join("same.txt"), b"old").unwrap();
 
-        move_dir_merge(&src, &dst, |_| true).unwrap();
+        let mut replaced = Vec::new();
+        move_dir_merge(&src, &dst, |_| true, &mut replaced).unwrap();
         assert_eq!(fs::read(dst.join("same.txt")).unwrap(), b"new");
+        assert_eq!(replaced, vec![dst.join("same.txt")]);
 
         fs::remove_dir_all(&root).ok();
     }
