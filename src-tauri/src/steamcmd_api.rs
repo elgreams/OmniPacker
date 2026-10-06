@@ -236,6 +236,62 @@ pub fn fetch_install_dir(appid: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// What appinfo says about an app's DLC, for the post-download DLC report.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct DlcCatalog {
+    /// DLC appids from `extended.listofdlc`, in listed order.
+    pub dlc_appids: Vec<String>,
+    /// depot_id → dlcappid for every depot of the base app that belongs to a DLC.
+    pub depot_dlc: HashMap<String, String>,
+    /// depot_id → oslist (comma-separated) for those DLC depots, when declared.
+    pub depot_oslist: HashMap<String, String>,
+}
+
+/// Fetches the DLC catalog for an app. `None` when the lookup fails.
+pub fn fetch_dlc_catalog(appid: &str) -> Option<DlcCatalog> {
+    match fetch_appinfo(appid) {
+        Ok(data) => Some(parse_dlc_catalog(&data)),
+        Err(err) => {
+            debug_eprintln!("[STEAMCMD] DLC catalog unavailable for {}: {}", appid, err);
+            None
+        }
+    }
+}
+
+fn parse_dlc_catalog(app_data: &Value) -> DlcCatalog {
+    let mut catalog = DlcCatalog::default();
+    if let Some(list) = app_data
+        .get("extended")
+        .and_then(|e| e.get("listofdlc"))
+        .and_then(|v| v.as_str())
+    {
+        catalog.dlc_appids = list
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()))
+            .collect();
+    }
+    if let Some(depots) = app_data.get("depots").and_then(|d| d.as_object()) {
+        for (depot_id, depot) in depots {
+            if !depot_id.chars().all(|c| c.is_ascii_digit()) {
+                continue;
+            }
+            if let Some(dlc) = depot.get("dlcappid").and_then(|v| v.as_str()) {
+                catalog.depot_dlc.insert(depot_id.clone(), dlc.to_string());
+                if let Some(os) = depot
+                    .get("config")
+                    .and_then(|c| c.get("oslist"))
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                {
+                    catalog.depot_oslist.insert(depot_id.clone(), os.to_string());
+                }
+            }
+        }
+    }
+    catalog
+}
+
 /// Returns the current buildid of `branch` for an app, fetched fresh (never
 /// from the session cache). `None` when the lookup fails or the branch isn't
 /// listed (e.g. a password-protected beta the mirror can't see).
@@ -391,6 +447,27 @@ mod tests {
         });
         let map = parse_shared_depots(&data, "555");
         assert_eq!(map.get("999"), Some(&"555".to_string()));
+    }
+
+    #[test]
+    fn test_parse_dlc_catalog() {
+        // Crimson Desert (3321460) shape, trimmed.
+        let data = serde_json::json!({
+            "extended": { "listofdlc": "4024620,4024630,4193060,5001840" },
+            "depots": {
+                "3321461": { "config": { "oslist": "windows" } },
+                "4783050": { "config": { "oslist": "windows" }, "dlcappid": "4783050" },
+                "5001841": { "config": { "oslist": "windows" }, "dlcappid": "5001840" },
+                "5001842": { "config": { "oslist": "macos" }, "dlcappid": "5001840" },
+                "branches": { "public": { "buildid": "1" } }
+            }
+        });
+        let c = parse_dlc_catalog(&data);
+        assert_eq!(c.dlc_appids, vec!["4024620", "4024630", "4193060", "5001840"]);
+        assert_eq!(c.depot_dlc.get("5001841").map(String::as_str), Some("5001840"));
+        assert_eq!(c.depot_dlc.get("4783050").map(String::as_str), Some("4783050"));
+        assert!(!c.depot_dlc.contains_key("3321461"));
+        assert_eq!(c.depot_oslist.get("5001842").map(String::as_str), Some("macos"));
     }
 
     #[test]

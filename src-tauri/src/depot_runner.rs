@@ -92,6 +92,9 @@ struct RunningJobState {
     depot_names: std::collections::HashMap<String, String>,
     // Track depot dlcappids from DepotDownloader output (depot_id -> dlcappid)
     depot_dlcappids: std::collections::HashMap<String, String>,
+    // Depots DepotDownloader skipped with "Depot N is not available from this
+    // account" (the account doesn't own them; usually DLC).
+    unavailable_depots: std::collections::HashSet<String>,
     // Depots DepotDownloader fell back to the public branch for because they
     // had no manifest on the requested branch ("Trying public branch" warning).
     branch_fallback_depots: std::collections::HashSet<String>,
@@ -119,6 +122,7 @@ impl RunningJobState {
         self.depot_names.clear();
         self.depot_dlcappids.clear();
         self.branch_fallback_depots.clear();
+        self.unavailable_depots.clear();
         self.last_depot_mentioned = None;
         self.progress.reset();
     }
@@ -228,6 +232,7 @@ impl DepotRunnerState {
                 depot_names: std::collections::HashMap::new(),
                 depot_dlcappids: std::collections::HashMap::new(),
                 branch_fallback_depots: std::collections::HashSet::new(),
+                unavailable_depots: std::collections::HashSet::new(),
                 log_reader_threads: None,
                 progress: DownloadProgress::default(),
             })),
@@ -799,6 +804,144 @@ fn parse_branch_fallback(line: &str) -> Option<String> {
             .unwrap()
     });
     re.captures(line).map(|c| c[1].to_string())
+}
+
+/// Extracts the depot ID from `Depot 4783050 is not available from this account.`
+fn parse_unavailable_depot(line: &str) -> Option<String> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(r"Depot\s+(\d+)\s+is not available from this account").unwrap()
+    });
+    re.captures(line).map(|c| c[1].to_string())
+}
+
+/// Why a listed DLC did or didn't end up in the package.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum DlcOutcome {
+    /// At least one of its depots was downloaded.
+    Included,
+    /// It has depots for this OS, but they weren't downloaded: the account
+    /// doesn't own it (DD says "not available from this account").
+    NotOwned,
+    /// It has depots, just none for the selected OS.
+    OtherPlatform,
+    /// No depots at all: an unlock-only DLC with no files to pack.
+    NoFiles,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct DlcStatus {
+    dlc_appid: String,
+    outcome: DlcOutcome,
+}
+
+/// Classifies every DLC of the app. DLC come from `listofdlc` plus any
+/// dlcappid seen on a depot (some content DLC aren't in listofdlc, e.g.
+/// Crimson Desert's 4783050). `steam_os` is DepotDownloader's -os value.
+fn classify_dlc(
+    catalog: &crate::steamcmd_api::DlcCatalog,
+    downloaded_depots: &[String],
+    steam_os: &str,
+) -> Vec<DlcStatus> {
+    let mut dlc_ids: Vec<String> = catalog.dlc_appids.clone();
+    let mut extra: Vec<String> = catalog
+        .depot_dlc
+        .values()
+        .filter(|id| !dlc_ids.contains(id))
+        .cloned()
+        .collect();
+    extra.sort_by_key(|id| depot_sort_key(id));
+    extra.dedup();
+    dlc_ids.extend(extra);
+
+    let for_os = |depot: &str| {
+        catalog
+            .depot_oslist
+            .get(depot)
+            .is_none_or(|os| os.split(',').any(|o| o.trim().eq_ignore_ascii_case(steam_os)))
+    };
+
+    dlc_ids
+        .into_iter()
+        .map(|dlc| {
+            let depots: Vec<&String> = catalog
+                .depot_dlc
+                .iter()
+                .filter(|(_, owner)| **owner == dlc)
+                .map(|(depot, _)| depot)
+                .collect();
+            let outcome = if depots.is_empty() {
+                DlcOutcome::NoFiles
+            } else if depots.iter().any(|d| downloaded_depots.contains(d)) {
+                DlcOutcome::Included
+            } else if !depots.iter().any(|d| for_os(d)) {
+                DlcOutcome::OtherPlatform
+            } else {
+                DlcOutcome::NotOwned
+            };
+            DlcStatus { dlc_appid: dlc, outcome }
+        })
+        .collect()
+}
+
+/// Logs a per-DLC report after download so "my DLC wasn't packed" has a
+/// visible answer. Best-effort: silent when the app has no DLC or the catalog
+/// lookup fails.
+fn report_dlc_status(
+    app_handle: &AppHandle,
+    job: &JobMetadata,
+    job_id: &str,
+    downloaded_depots: &[String],
+    unavailable_depots: &std::collections::HashSet<String>,
+) {
+    let Some(catalog) = crate::steamcmd_api::fetch_dlc_catalog(&job.app_id) else {
+        return;
+    };
+    let statuses = classify_dlc(&catalog, downloaded_depots, map_os_selection(&job.os).0);
+    if statuses.is_empty() {
+        return;
+    }
+
+    let count = |o: DlcOutcome| statuses.iter().filter(|s| s.outcome == o).count();
+    emit_log(
+        app_handle,
+        "system",
+        &format!(
+            "DLC: {} included, {} not owned by this account, {} not for this OS, {} with no files to pack.",
+            count(DlcOutcome::Included),
+            count(DlcOutcome::NotOwned),
+            count(DlcOutcome::OtherPlatform),
+            count(DlcOutcome::NoFiles),
+        ),
+        job_id,
+    );
+    for status in &statuses {
+        let name = crate::steamcmd_api::fetch_app_name(&status.dlc_appid)
+            .unwrap_or_else(|| format!("DLC {}", status.dlc_appid));
+        let label = match status.outcome {
+            DlcOutcome::Included => "included",
+            DlcOutcome::NotOwned => "NOT INCLUDED - this account doesn't own it",
+            DlcOutcome::OtherPlatform => "not included - no files for this OS",
+            DlcOutcome::NoFiles => "nothing to pack - unlock only, no files",
+        };
+        emit_log(
+            app_handle,
+            "system",
+            &format!("  {} ({}): {}", name, status.dlc_appid, label),
+            job_id,
+        );
+    }
+    if !unavailable_depots.is_empty() {
+        let mut ids: Vec<&String> = unavailable_depots.iter().collect();
+        ids.sort_by_key(|d| depot_sort_key(d));
+        let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
+        emit_log(
+            app_handle,
+            "system",
+            &format!("  Depots skipped as not owned by this account: {}", ids.join(", ")),
+            job_id,
+        );
+    }
 }
 
 /// How the requested branch was actually delivered.
@@ -1564,15 +1707,23 @@ fn run_depotdownloader_worker(
                 // Branch fallback check: DepotDownloader silently swaps in public
                 // for depots with no manifest on the requested branch, and the
                 // output would still be named after the requested branch.
-                let fallback_depots = state_handle
+                let (fallback_depots, unavailable_depots) = state_handle
                     .lock()
-                    .map(|g| g.branch_fallback_depots.clone())
+                    .map(|g| (g.branch_fallback_depots.clone(), g.unavailable_depots.clone()))
                     .unwrap_or_default();
+                let downloaded = downloaded_depot_ids(&staging_dir_for_monitor);
                 let delivery = classify_branch_delivery(
                     &job_for_monitor.branch,
-                    &downloaded_depot_ids(&staging_dir_for_monitor),
+                    &downloaded,
                     &fallback_depots,
                     crate::shared_depots::is_shared_depot,
+                );
+                report_dlc_status(
+                    &app_handle_clone,
+                    &job_for_monitor,
+                    &job_id_for_monitor,
+                    &downloaded,
+                    &unavailable_depots,
                 );
                 match delivery {
                     BranchDelivery::AsRequested => {}
@@ -2444,6 +2595,11 @@ fn maybe_store_build_datetime(app_handle: &AppHandle, line: &str, job_id: &str) 
             return;
         }
 
+        if let Some(depot_id) = parse_unavailable_depot(line) {
+            guard.unavailable_depots.insert(depot_id);
+            return;
+        }
+
         // Track depot names: Depot 12345 "Depot Name"
         if let Some(caps) = depot_name.captures(line) {
             if let (Some(depot_id), Some(name)) = (
@@ -2749,6 +2905,55 @@ mod tests {
         assert!(!is_game_name_echo("Game - Soundtrack", "Game"));
         assert!(!is_game_name_echo("Game Demo", "Game"));
         assert!(!is_game_name_echo("Other - windows", "Game"));
+    }
+
+    #[test]
+    fn classify_dlc_crimson_desert() {
+        // Real Crimson Desert shape: 3 listed DLC have no depots (unlock only),
+        // 5001840 has windows+mac depots, 4783050 has a depot but isn't listed.
+        use super::{classify_dlc, parse_unavailable_depot, DlcOutcome};
+        use crate::steamcmd_api::DlcCatalog;
+        use std::collections::HashMap;
+
+        assert_eq!(
+            parse_unavailable_depot("Depot 4783050 is not available from this account.").as_deref(),
+            Some("4783050")
+        );
+
+        let catalog = DlcCatalog {
+            dlc_appids: ["4024620", "4024630", "4193060", "5001840"].map(String::from).to_vec(),
+            depot_dlc: HashMap::from([
+                ("4783050".to_string(), "4783050".to_string()),
+                ("5001841".to_string(), "5001840".to_string()),
+                ("5001842".to_string(), "5001840".to_string()),
+            ]),
+            depot_oslist: HashMap::from([
+                ("4783050".to_string(), "windows".to_string()),
+                ("5001841".to_string(), "windows".to_string()),
+                ("5001842".to_string(), "macos".to_string()),
+            ]),
+        };
+        let downloaded = vec!["228989".to_string(), "3321461".to_string()];
+
+        let got: Vec<(String, DlcOutcome)> = classify_dlc(&catalog, &downloaded, "windows")
+            .into_iter()
+            .map(|s| (s.dlc_appid, s.outcome))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("4024620".into(), DlcOutcome::NoFiles),
+                ("4024630".into(), DlcOutcome::NoFiles),
+                ("4193060".into(), DlcOutcome::NoFiles),
+                ("5001840".into(), DlcOutcome::NotOwned),
+                ("4783050".into(), DlcOutcome::NotOwned),
+            ]
+        );
+
+        // Owned on Windows -> included; for Linux the same DLC is other-platform.
+        let downloaded = vec!["3321461".to_string(), "5001841".to_string()];
+        assert_eq!(classify_dlc(&catalog, &downloaded, "windows")[3].outcome, DlcOutcome::Included);
+        assert_eq!(classify_dlc(&catalog, &[], "linux")[3].outcome, DlcOutcome::OtherPlatform);
     }
 
     #[test]
