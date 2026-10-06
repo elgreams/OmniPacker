@@ -92,6 +92,9 @@ struct RunningJobState {
     depot_names: std::collections::HashMap<String, String>,
     // Track depot dlcappids from DepotDownloader output (depot_id -> dlcappid)
     depot_dlcappids: std::collections::HashMap<String, String>,
+    // Depots DepotDownloader fell back to the public branch for because they
+    // had no manifest on the requested branch ("Trying public branch" warning).
+    branch_fallback_depots: std::collections::HashSet<String>,
     // Join handles for log reader threads (to ensure all logs are parsed before metadata derivation)
     log_reader_threads: Option<(thread::JoinHandle<()>, thread::JoinHandle<()>)>,
     // Download-progress tracking. DepotDownloader announces every depot up front
@@ -115,6 +118,7 @@ impl RunningJobState {
         self.manifest_timestamps.clear();
         self.depot_names.clear();
         self.depot_dlcappids.clear();
+        self.branch_fallback_depots.clear();
         self.last_depot_mentioned = None;
         self.progress.reset();
     }
@@ -223,6 +227,7 @@ impl DepotRunnerState {
                 last_depot_mentioned: None,
                 depot_names: std::collections::HashMap::new(),
                 depot_dlcappids: std::collections::HashMap::new(),
+                branch_fallback_depots: std::collections::HashSet::new(),
                 log_reader_threads: None,
                 progress: DownloadProgress::default(),
             })),
@@ -744,6 +749,76 @@ fn derive_metadata_from_download(
     );
 
     Ok(())
+}
+
+/// Extracts the depot ID from DepotDownloader's branch-fallback warning:
+/// `Warning: Depot 123 does not have branch named "beta". Trying public branch.`
+fn parse_branch_fallback(line: &str) -> Option<String> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(r#"Depot\s+(\d+)\s+does not have branch named\s+"[^"]*"\.\s*Trying\s+\S+\s+branch"#)
+            .unwrap()
+    });
+    re.captures(line).map(|c| c[1].to_string())
+}
+
+/// How the requested branch was actually delivered.
+#[derive(Debug, PartialEq)]
+enum BranchDelivery {
+    /// Public requested, or no depot fell back.
+    AsRequested,
+    /// Some game depots came from public. Normal for betas that only change
+    /// part of the game; logged so it isn't invisible.
+    Partial(Vec<String>),
+    /// Every game depot came from public: the branch content was never
+    /// delivered (missing branch, wrong/absent password). Packing it under the
+    /// requested branch name would mislabel public content.
+    FellBackEntirely,
+}
+
+/// Decides how a non-public branch was delivered from the depots that were
+/// downloaded and the ones DepotDownloader fell back to public for. Shared
+/// redist depots are ignored: they always come from their own app's public
+/// branch (228980 has no betas), so they fall back on every beta download.
+fn classify_branch_delivery(
+    requested_branch: &str,
+    downloaded_depots: &[String],
+    fallback_depots: &std::collections::HashSet<String>,
+    is_shared: impl Fn(&str) -> bool,
+) -> BranchDelivery {
+    let branch = requested_branch.trim();
+    if branch.is_empty() || branch.eq_ignore_ascii_case("public") {
+        return BranchDelivery::AsRequested;
+    }
+    let game_depots: Vec<&String> = downloaded_depots.iter().filter(|d| !is_shared(d)).collect();
+    let mut fell_back: Vec<String> = game_depots
+        .iter()
+        .filter(|d| fallback_depots.contains(d.as_str()))
+        .map(|d| d.to_string())
+        .collect();
+    fell_back.sort_by_key(|d| depot_sort_key(d));
+
+    if fell_back.is_empty() {
+        BranchDelivery::AsRequested
+    } else if fell_back.len() == game_depots.len() {
+        BranchDelivery::FellBackEntirely
+    } else {
+        BranchDelivery::Partial(fell_back)
+    }
+}
+
+/// Lists the depot directories DepotDownloader produced under `depots/`.
+fn downloaded_depot_ids(staging_dir: &std::path::Path) -> Vec<String> {
+    std::fs::read_dir(staging_dir.join("depots"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| e.path().is_dir())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .filter(|name| name.chars().all(|c| c.is_ascii_digit()))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Max overwritten paths listed per depot in the log; the rest are counted.
@@ -1446,6 +1521,54 @@ fn run_depotdownloader_worker(
                         drop(guard); // Release lock before joining
                         let _ = stdout_h.join();
                         let _ = stderr_h.join();
+                    }
+                }
+
+                // Branch fallback check: DepotDownloader silently swaps in public
+                // for depots with no manifest on the requested branch, and the
+                // output would still be named after the requested branch.
+                let fallback_depots = state_handle
+                    .lock()
+                    .map(|g| g.branch_fallback_depots.clone())
+                    .unwrap_or_default();
+                let delivery = classify_branch_delivery(
+                    &job_for_monitor.branch,
+                    &downloaded_depot_ids(&staging_dir_for_monitor),
+                    &fallback_depots,
+                    crate::shared_depots::is_shared_depot,
+                );
+                match delivery {
+                    BranchDelivery::AsRequested => {}
+                    BranchDelivery::Partial(depots) => {
+                        emit_log(
+                            &app_handle_clone,
+                            "system",
+                            &format!(
+                                "Note: branch '{}' has no build for depot(s) {}; those came from public. \
+                                 This is normal when a beta only changes part of the game.",
+                                job_for_monitor.branch,
+                                depots.join(", ")
+                            ),
+                            &job_id_for_monitor,
+                        );
+                    }
+                    BranchDelivery::FellBackEntirely => {
+                        emit_log(
+                            &app_handle_clone,
+                            "system",
+                            &format!(
+                                "Branch '{}' was not found or is not accessible (it may not exist, or it needs a \
+                                 password). DepotDownloader downloaded the public branch instead, so the job was \
+                                 stopped rather than pack public files under the '{}' name. Check the branch name \
+                                 and password, or queue it as public.",
+                                job_for_monitor.branch, job_for_monitor.branch
+                            ),
+                            &job_id_for_monitor,
+                        );
+                        emit_status(&app_handle_clone, "error", None, &job_id_for_monitor);
+                        let _ = cleanup_staging_dir(&app_handle_clone, &job_id_for_monitor);
+                        clear_runner_state(&state_handle, &job_id_for_monitor);
+                        return;
                     }
                 }
 
@@ -2287,6 +2410,11 @@ fn maybe_store_build_datetime(app_handle: &AppHandle, line: &str, job_id: &str) 
             return;
         }
 
+        if let Some(depot_id) = parse_branch_fallback(line) {
+            guard.branch_fallback_depots.insert(depot_id);
+            return;
+        }
+
         // Track depot names: Depot 12345 "Depot Name"
         if let Some(caps) = depot_name.captures(line) {
             if let (Some(depot_id), Some(name)) = (
@@ -2526,6 +2654,49 @@ mod tests {
         depot_sort_key, is_stale_build, map_os_selection, select_primary_depot, DepotInfo,
         DepotRunnerState, DownloadProgress,
     };
+
+    #[test]
+    fn parses_dd_branch_fallback_warning() {
+        let line = r#"Warning: Depot 3321461 does not have branch named "beta". Trying public branch."#;
+        assert_eq!(super::parse_branch_fallback(line).as_deref(), Some("3321461"));
+        assert_eq!(super::parse_branch_fallback("Downloading depot 3321461"), None);
+    }
+
+    #[test]
+    fn branch_delivery_classification() {
+        use super::{classify_branch_delivery, BranchDelivery};
+        use std::collections::HashSet;
+        let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let set = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<HashSet<_>>();
+        let shared = |id: &str| id == "228989" || id == "228990";
+        let downloaded = ids(&["228989", "228990", "3321461", "3321462"]);
+
+        // Public never "falls back".
+        assert_eq!(
+            classify_branch_delivery("public", &downloaded, &set(&["3321461"]), shared),
+            BranchDelivery::AsRequested
+        );
+        // Only redists fell back (they always do on a beta): fine.
+        assert_eq!(
+            classify_branch_delivery("beta", &downloaded, &set(&["228989", "228990"]), shared),
+            BranchDelivery::AsRequested
+        );
+        // One game depot from public: partial, logged, job continues.
+        assert_eq!(
+            classify_branch_delivery("beta", &downloaded, &set(&["228989", "3321462"]), shared),
+            BranchDelivery::Partial(vec!["3321462".to_string()])
+        );
+        // Every game depot from public: the branch was never delivered.
+        assert_eq!(
+            classify_branch_delivery(
+                "beta",
+                &downloaded,
+                &set(&["228989", "228990", "3321461", "3321462"]),
+                shared
+            ),
+            BranchDelivery::FellBackEntirely
+        );
+    }
 
     #[test]
     fn collision_log_samples_and_counts() {
