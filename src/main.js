@@ -4045,6 +4045,30 @@ if (deleteLoginButton) {
   });
 }
 
+// Escape dismisses the topmost dismissible modal. Ordered topmost-first so a
+// confirm stacked over the template editor closes before the editor does.
+// Job-bound prompts (output conflict, Steam Guard, QR) are deliberately left
+// out: closing them by accident would stall or abandon a running job.
+const ESCAPE_DISMISSIBLE_MODALS = [
+  [templateGenericConfirmOverlay, () => closeGenericConfirm(false)],
+  [templateSaveOverlay, () => closeSaveProfileModal()],
+  [templateModalOverlay, () => void closeTemplateEditor()],
+  [settingsModalOverlay, () => closeSettingsModal()],
+];
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || event.defaultPrevented) {
+    return;
+  }
+  for (const [overlay, close] of ESCAPE_DISMISSIBLE_MODALS) {
+    if (overlay?.classList.contains("active")) {
+      event.preventDefault();
+      close();
+      return;
+    }
+  }
+});
+
 // --- Update check (check-and-warn, not a self-updater) ---
 
 // Latest UpdateInfo from the backend, kept so the banner buttons can act on it.
