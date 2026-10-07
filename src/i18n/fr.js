@@ -55,6 +55,7 @@ export default {
   "advanced.errorManifestAll": "Pour épingler un ancien build, chaque dépôt coché doit avoir un ID de manifeste.",
   "advanced.errorManifestNumeric": "Les ID de manifeste doivent être des nombres.",
   "advanced.errorBuildNumeric": "Le numéro de build doit être un nombre.",
+  "advanced.errorSingleCombo": "La sélection avancée de dépôts s'applique à un seul OS et une seule branche. Décochez les autres ou effacez la sélection avancée.",
   "branch.title": "Gestionnaire de branches",
   "branch.label": "Branche à télécharger:",
   "branch.add": "Ajouter",

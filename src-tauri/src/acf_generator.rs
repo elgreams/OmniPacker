@@ -134,7 +134,15 @@ fn generate_acf_content(
     vdf.key_value("LastPlayed", "0");
     vdf.key_value("SizeOnDisk", &size_on_disk.to_string());
     vdf.key_value("StagingSize", "0");
-    vdf.key_value("buildid", &metadata.build_id);
+    // Steam reads buildid as a number. A pinned download whose build couldn't
+    // be resolved is labelled "Manifest<id>" for the folder name; write "0"
+    // (unknown) here instead of a non-numeric value Steam would choke on.
+    let acf_buildid = if metadata.build_id.chars().all(|c| c.is_ascii_digit()) && !metadata.build_id.is_empty() {
+        metadata.build_id.as_str()
+    } else {
+        "0"
+    };
+    vdf.key_value("buildid", acf_buildid);
 
     // PRIVACY: LastOwner is ALWAYS "0" to prevent deanonymization
     vdf.key_value("LastOwner", "0");

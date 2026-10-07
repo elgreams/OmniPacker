@@ -55,6 +55,7 @@ export default {
   "advanced.errorManifestAll": "When pinning an older build, every checked depot needs a manifest ID.",
   "advanced.errorManifestNumeric": "Manifest IDs must be numbers.",
   "advanced.errorBuildNumeric": "The build number must be a number.",
+  "advanced.errorSingleCombo": "Advanced depot selection applies to one OS and one branch. Uncheck the extra ones, or clear the Advanced selection.",
   "branch.title": "Branch Manager",
   "branch.label": "Branch to download:",
   "branch.add": "Add",

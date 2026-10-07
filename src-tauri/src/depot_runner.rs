@@ -1031,6 +1031,11 @@ fn report_dlc_status(
     downloaded_depots: &[String],
     unavailable_depots: &std::collections::HashSet<String>,
 ) {
+    // With a hand-picked depot list, un-picked DLC weren't skipped for
+    // ownership; reporting them as "not owned" would be wrong.
+    if job.depot_ids.iter().any(|d| !d.trim().is_empty()) {
+        return;
+    }
     let Some(catalog) = crate::steamcmd_api::fetch_dlc_catalog(&job.app_id) else {
         return;
     };

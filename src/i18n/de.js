@@ -55,6 +55,7 @@ export default {
   "advanced.errorManifestAll": "Beim Festlegen eines älteren Builds braucht jedes angehakte Depot eine Manifest-ID.",
   "advanced.errorManifestNumeric": "Manifest-IDs müssen Zahlen sein.",
   "advanced.errorBuildNumeric": "Die Build-Nummer muss eine Zahl sein.",
+  "advanced.errorSingleCombo": "Die erweiterte Depot-Auswahl gilt für ein Betriebssystem und einen Branch. Weitere abwählen oder die erweiterte Auswahl leeren.",
   "branch.title": "Branch-Manager",
   "branch.label": "Branch zum Download:",
   "branch.add": "Hinzufügen",

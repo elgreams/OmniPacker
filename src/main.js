@@ -3352,6 +3352,13 @@ const addJobToQueue = () => {
   // to a different game typed afterwards.
   const advanced =
     advancedState.appId === appIdValue ? getAdvancedSelection() : { depotSelection: [], buildIdOverride: "" };
+  // Hand-picked depots override DepotDownloader's OS filter, so fanning one
+  // selection out across several OS/branch combos would label e.g. Windows
+  // depots as a Linux build. Require a single combination.
+  if (advanced.depotSelection.length > 0 && (osValues.length > 1 || branches.length > 1)) {
+    window.alert(t("advanced.errorSingleCombo"));
+    return;
+  }
 
   let lastJob = null;
   osValues.forEach((os) => {

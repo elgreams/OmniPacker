@@ -55,6 +55,7 @@ export default {
   "advanced.errorManifestAll": "Для закрепления старой сборки каждому отмеченному депо нужен ID манифеста.",
   "advanced.errorManifestNumeric": "ID манифеста должны быть числами.",
   "advanced.errorBuildNumeric": "Номер сборки должен быть числом.",
+  "advanced.errorSingleCombo": "Расширенный выбор депо применяется к одной ОС и одной ветке. Снимите лишние отметки или очистите расширенный выбор.",
   "branch.title": "Менеджер веток",
   "branch.label": "Ветка для загрузки:",
   "branch.add": "Добавить",

@@ -55,6 +55,7 @@ export default {
   "advanced.errorManifestAll": "Al fijar una build antigua, cada depósito marcado necesita un ID de manifiesto.",
   "advanced.errorManifestNumeric": "Los ID de manifiesto deben ser números.",
   "advanced.errorBuildNumeric": "El número de build debe ser un número.",
+  "advanced.errorSingleCombo": "La selección avanzada de depósitos se aplica a un SO y una rama. Desmarca los demás o limpia la selección avanzada.",
   "branch.title": "Gestor de ramas",
   "branch.label": "Rama para descargar:",
   "branch.add": "Agregar",
