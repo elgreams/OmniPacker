@@ -1361,12 +1361,20 @@ struct ArchiveOptions<'a> {
     test_archive: bool,
 }
 
+/// What a finished compression produced, for the summary line.
+struct CompressionResult {
+    archive_path: std::path::PathBuf,
+    source_bytes: u64,
+    archive_bytes: u64,
+    elapsed: Duration,
+}
+
 fn compress_output(
     app_handle: &AppHandle,
     output_path: &std::path::Path,
     job_id: &str,
     options: &ArchiveOptions,
-) -> Result<std::path::PathBuf, CompressionError> {
+) -> Result<CompressionResult, CompressionError> {
     let ArchiveOptions {
         password: compression_password,
         custom_args: custom_compression_args,
@@ -1401,6 +1409,9 @@ fn compress_output(
         level,
     );
     let redacted_args = redact_7z_password_args(&args);
+    // Measured now: the source folder is deleted once the archive is done.
+    let source_bytes = crate::acf_generator::calculate_size_on_disk(output_path);
+    let started = std::time::Instant::now();
 
     emit_log(
         app_handle,
@@ -1448,6 +1459,9 @@ fn compress_output(
             "Archive not found after compression".to_string(),
         ));
     }
+
+    let elapsed = started.elapsed();
+    let archive_bytes = archive_output_bytes(&archive_path);
 
     // Optional integrity check, BEFORE the uncompressed folder is deleted, so
     // a bad archive never costs the user their only good copy.
@@ -1508,7 +1522,72 @@ fn compress_output(
         );
     }
 
-    Ok(archive_path)
+    Ok(CompressionResult { archive_path, source_bytes, archive_bytes, elapsed })
+}
+
+/// Total size of an archive's output: the single file, or every
+/// `<name>.NNN` split volume (same matching as `remove_archive_outputs`).
+fn archive_output_bytes(archive_path: &std::path::Path) -> u64 {
+    let single = std::fs::metadata(archive_path).map(|m| m.len()).unwrap_or(0);
+    let (Some(parent), Some(file_name)) =
+        (archive_path.parent(), archive_path.file_name().and_then(|n| n.to_str()))
+    else {
+        return single;
+    };
+    let volume_prefix = format!("{}.", file_name);
+    let volumes: u64 = std::fs::read_dir(parent)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| {
+                    e.file_name().to_str().and_then(|n| n.strip_prefix(&volume_prefix)).is_some_and(
+                        |suffix| !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()),
+                    )
+                })
+                .filter_map(|e| e.metadata().ok())
+                .map(|m| m.len())
+                .sum()
+        })
+        .unwrap_or(0);
+    single + volumes
+}
+
+/// Human-readable byte size, binary units ("143.2 GiB"), matching how 7-Zip
+/// and most file managers report large sizes.
+fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 { format!("{bytes} B") } else { format!("{value:.1} {}", UNITS[unit]) }
+}
+
+fn format_elapsed(elapsed: Duration) -> String {
+    let secs = elapsed.as_secs();
+    match (secs / 3600, (secs % 3600) / 60, secs % 60) {
+        (0, 0, s) => format!("{s}s"),
+        (0, m, s) => format!("{m}m {s:02}s"),
+        (h, m, s) => format!("{h}h {m:02}m {s:02}s"),
+    }
+}
+
+/// One-line compression summary: level, time, size before/after, ratio.
+fn compression_summary(level: CompressionLevel, result: &CompressionResult) -> String {
+    let mut line = format!(
+        "Compression summary: {} level, {}, {} -> {}",
+        level.label(),
+        format_elapsed(result.elapsed),
+        format_bytes(result.source_bytes),
+        format_bytes(result.archive_bytes),
+    );
+    if result.source_bytes > 0 && result.archive_bytes > 0 {
+        let ratio = result.archive_bytes as f64 / result.source_bytes as f64 * 100.0;
+        line.push_str(&format!(" ({ratio:.1}% of original, {:.1}% saved)", 100.0 - ratio));
+    }
+    line
 }
 
 /// Builds DepotDownloader command-line arguments from job metadata.
@@ -2099,14 +2178,20 @@ fn run_depotdownloader_worker(
                                     test_archive: job_for_monitor.test_archive,
                                 },
                             ) {
-                                Ok(archive_path) => {
+                                Ok(result) => {
                                     emit_log(
                                         &app_handle_clone,
                                         "system",
-                                        &format!("Compression complete: {}", archive_path.display()),
+                                        &format!("Compression complete: {}", result.archive_path.display()),
                                         &job_id_for_monitor,
                                     );
-                                    final_output_path = archive_path;
+                                    emit_log(
+                                        &app_handle_clone,
+                                        "system",
+                                        &compression_summary(job_for_monitor.compression_level, &result),
+                                        &job_id_for_monitor,
+                                    );
+                                    final_output_path = result.archive_path;
                                 }
                                 Err(CompressionError::Failed(err)) => {
                                     // Genuine compression error: keep the
@@ -3289,6 +3374,44 @@ mod tests {
         assert!(lines[0].contains("depot 2593343 overwrote 12 file(s)"));
         assert_eq!(lines.len(), 1 + 10 + 1);
         assert_eq!(lines.last().unwrap(), "  ...and 2 more");
+    }
+
+    #[test]
+    fn compression_summary_formats_sizes_time_and_ratio() {
+        use super::{compression_summary, format_bytes, format_elapsed, CompressionResult};
+        use crate::zip_runner::CompressionLevel;
+        use std::time::Duration;
+        assert_eq!(format_bytes(512), "512 B");
+        assert_eq!(format_bytes(1536), "1.5 KiB");
+        assert_eq!(format_bytes(152_629_646_026), "142.1 GiB");
+        assert_eq!(format_elapsed(Duration::from_secs(9)), "9s");
+        assert_eq!(format_elapsed(Duration::from_secs(125)), "2m 05s");
+        assert_eq!(format_elapsed(Duration::from_secs(3 * 3600 + 7 * 60 + 4)), "3h 07m 04s");
+
+        let r = CompressionResult {
+            archive_path: "/o/x.7z".into(),
+            source_bytes: 1000 * 1024 * 1024,
+            archive_bytes: 250 * 1024 * 1024,
+            elapsed: Duration::from_secs(125),
+        };
+        assert_eq!(
+            compression_summary(CompressionLevel::Normal, &r),
+            "Compression summary: Normal level, 2m 05s, 1000.0 MiB -> 250.0 MiB (25.0% of original, 75.0% saved)"
+        );
+    }
+
+    #[test]
+    fn archive_output_bytes_counts_split_volumes() {
+        let dir = std::env::temp_dir().join(format!(
+            "omnipacker_sizes_{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, len) in [("g.7z.001", 100), ("g.7z.002", 50), ("g.7z.txt", 999), ("other.7z.001", 7)] {
+            std::fs::write(dir.join(name), vec![0u8; len]).unwrap();
+        }
+        assert_eq!(super::archive_output_bytes(&dir.join("g.7z")), 150);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
