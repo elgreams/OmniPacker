@@ -80,6 +80,9 @@ pub struct JobMetadata {
     /// 7-Zip compression level; absent in older payloads, which means Ultra.
     #[serde(default)]
     pub compression_level: CompressionLevel,
+    /// Verify the archive with `7z t` before deleting the uncompressed copy.
+    #[serde(default)]
+    pub test_archive: bool,
     /// Global uploader handle (from the "Uploader name" setting). Injected into
     /// the `{{username}}` token for any profile that uses it. Empty when unset.
     #[serde(default)]
@@ -1349,15 +1352,28 @@ pub(crate) fn remove_archive_outputs(archive_path: &std::path::Path) {
     }
 }
 
+/// Per-job archive choices, resolved from the job's settings.
+struct ArchiveOptions<'a> {
+    password: Option<&'a str>,
+    custom_args: Option<&'a str>,
+    split_volume_size: Option<&'a str>,
+    level: CompressionLevel,
+    test_archive: bool,
+}
+
 fn compress_output(
     app_handle: &AppHandle,
     output_path: &std::path::Path,
     job_id: &str,
-    compression_password: Option<&str>,
-    custom_compression_args: Option<&str>,
-    split_volume_size: Option<&str>,
-    level: CompressionLevel,
+    options: &ArchiveOptions,
 ) -> Result<std::path::PathBuf, CompressionError> {
+    let ArchiveOptions {
+        password: compression_password,
+        custom_args: custom_compression_args,
+        split_volume_size,
+        level,
+        test_archive,
+    } = *options;
     let archive_path = resolve_archive_path(output_path);
 
     // When splitting, 7-Zip writes archive.7z.001, .002, … rather than
@@ -1394,6 +1410,8 @@ fn compress_output(
     );
 
     let zip_state = app_handle.state::<SevenZipRunnerState>();
+    // New job, new run: forget any cancel left over from a previous job.
+    zip_state.reset_cancel();
     let exit_code = match run_7zip_blocking(app_handle, &zip_state, args) {
         Ok(SevenZipOutcome::Exited(code)) => code,
         Ok(SevenZipOutcome::Cancelled) => {
@@ -1429,6 +1447,36 @@ fn compress_output(
         return Err(CompressionError::Failed(
             "Archive not found after compression".to_string(),
         ));
+    }
+
+    // Optional integrity check, BEFORE the uncompressed folder is deleted, so
+    // a bad archive never costs the user their only good copy.
+    if test_archive {
+        let target = if split { &first_volume_path } else { &archive_path };
+        emit_log(app_handle, "system", "Testing archive integrity...", job_id);
+        match run_7zip_blocking(
+            app_handle,
+            &zip_state,
+            crate::zip_runner::archive_test_args(target, compression_password),
+        ) {
+            Ok(SevenZipOutcome::Exited(0)) => {
+                emit_log(app_handle, "system", "Archive test passed.", job_id);
+            }
+            Ok(SevenZipOutcome::Exited(code)) => {
+                remove_archive_outputs(&archive_path);
+                return Err(CompressionError::Failed(format!(
+                    "Archive test failed (7-Zip exit code {code}); the archive was removed and the uncompressed folder kept"
+                )));
+            }
+            Ok(SevenZipOutcome::Cancelled) => {
+                remove_archive_outputs(&archive_path);
+                return Err(CompressionError::Cancelled);
+            }
+            Err(err) => {
+                remove_archive_outputs(&archive_path);
+                return Err(CompressionError::Failed(format!("Archive test could not run: {err}")));
+            }
+        }
     }
 
     // Default behavior: Remove uncompressed folder after successful compression
@@ -2043,10 +2091,13 @@ fn run_depotdownloader_worker(
                                 &app_handle_clone,
                                 &output_path,
                                 &job_id_for_monitor,
-                                compression_password,
-                                custom_compression_args,
-                                split_volume_size,
-                                job_for_monitor.compression_level,
+                                &ArchiveOptions {
+                                    password: compression_password,
+                                    custom_args: custom_compression_args,
+                                    split_volume_size,
+                                    level: job_for_monitor.compression_level,
+                                    test_archive: job_for_monitor.test_archive,
+                                },
                             ) {
                                 Ok(archive_path) => {
                                     emit_log(
@@ -3441,6 +3492,7 @@ mod tests {
             custom_compression_args: String::new(),
             split_volume_size: String::new(),
             compression_level: Default::default(),
+            test_archive: false,
             uploader_name: String::new(),
             upload_date: String::new(),
             template_profiles: Vec::new(),

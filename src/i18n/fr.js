@@ -90,6 +90,8 @@ export default {
   "settings.compressionLevel.normal": "Normal",
   "settings.compressionLevel.fast": "Rapide (le plus gros, le plus rapide)",
   "settings.compressionLevelHint": "Ultra produit l'archive la plus petite mais peut prendre des heures sur les très gros jeux.",
+  "settings.testArchive": "Tester l'archive après compression",
+  "settings.testArchiveHint": "Vérifie l'archive avant la suppression du dossier non compressé. Ajoute quelques minutes sur les gros jeux.",
   "settings.outputDirToggle": "Utiliser un dossier de sortie personnalisé",
   "settings.outputDirPlaceholder": "Par défaut (à côté de l'application)",
   "settings.outputDirBrowse": "Parcourir…",

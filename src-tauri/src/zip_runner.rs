@@ -45,6 +45,12 @@ impl SevenZipRunnerState {
         }
     }
 
+    /// Clears a previous cancel request. Call once when a job's compression
+    /// starts, not between its compress and test steps.
+    pub fn reset_cancel(&self) {
+        self.cancelled.store(false, Ordering::SeqCst);
+    }
+
     /// Kills the running 7-Zip child (if any) and clears it from state.
     /// Safe to call when no child is running.
     pub fn kill_child(&self) {
@@ -102,13 +108,15 @@ pub fn cancel_7zip(
         .lock()
         .map_err(|_| "Failed to lock 7-Zip state".to_string())?;
 
-    let Some(child) = guard.as_mut() else {
-        return Err("7-Zip is not running".to_string());
-    };
-
-    // Mark this as a user cancel before killing, so a concurrent
-    // `run_7zip_blocking` reports `Cancelled` rather than a bogus exit code.
+    // Record the cancel first, even if no child is running right now: between
+    // compressing and testing an archive there's a moment with no 7-Zip
+    // process, and a cancel landing there must still stop the next step.
+    // The flag is only reset when a new compression run begins.
     state.cancelled.store(true, Ordering::SeqCst);
+
+    let Some(child) = guard.as_mut() else {
+        return Ok(());
+    };
 
     child
         .kill()
@@ -141,8 +149,10 @@ pub fn run_7zip_blocking(
         return Err("7-Zip is already running".to_string());
     }
 
-    // Clear any stale cancel flag from a previous run before starting.
-    state.cancelled.store(false, Ordering::SeqCst);
+    // A cancel requested before (or between) runs of this job stops it here.
+    if state.cancelled.load(Ordering::SeqCst) {
+        return Ok(SevenZipOutcome::Cancelled);
+    }
 
     let path = resolve_7zip_path(app_handle)?;
 
@@ -150,6 +160,9 @@ pub fn run_7zip_blocking(
     command.args(&args);
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
+    // No stdin: if 7-Zip ever wants input (e.g. a password prompt) it fails
+    // immediately instead of hanging the job forever.
+    command.stdin(Stdio::null());
 
     // Hide console window on Windows
     #[cfg(windows)]
@@ -245,6 +258,18 @@ impl CompressionLevel {
             CompressionLevel::Ultra => "Ultra",
         }
     }
+}
+
+/// Arguments to verify a finished archive (`7z t`). For split output, point
+/// it at the first volume; 7-Zip follows the rest. The password is always
+/// passed (empty when there is none) so 7-Zip never stops to ask for one.
+pub fn archive_test_args(archive_or_first_volume: &Path, password: Option<&str>) -> Vec<String> {
+    vec![
+        "t".to_string(),
+        format!("-p{}", password.unwrap_or("")),
+        "-bsp1".to_string(),
+        archive_or_first_volume.to_string_lossy().to_string(),
+    ]
 }
 
 /// Calculates optimal 7-Zip compression arguments based on CPU cores.
@@ -794,6 +819,76 @@ mod tests {
         let legacy: CompressionLevel = serde_json::from_value(serde_json::json!("ultra")).unwrap();
         assert_eq!(legacy, CompressionLevel::Ultra);
         assert_eq!(CompressionLevel::default(), CompressionLevel::Ultra);
+    }
+
+    /// Runs the bundled 7-Zip directly (no AppHandle) to check that the test
+    /// step really detects damage in split, password-protected archives.
+    #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn archive_test_args_catch_a_corrupt_split_volume() {
+        use std::io::{Seek, SeekFrom, Write};
+        let zz = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries/linux-x64/7zz");
+        let dir = std::env::temp_dir().join(format!(
+            "omnipacker_7ztest_{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let src = dir.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        // Incompressible data so the archive really spans several volumes.
+        let mut seed: u64 = 0x9E3779B97F4A7C15;
+        let data: Vec<u8> = (0..3_000_000)
+            .map(|_| {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                seed as u8
+            })
+            .collect();
+        std::fs::write(src.join("game.bin"), &data).unwrap();
+
+        let archive = dir.join("out.7z");
+        let mut args = calculate_7z_compression_args(
+            &src, &archive, Some("pw"), None, Some("1m"), CompressionLevel::Fast,
+        );
+        args.retain(|a| !a.starts_with("-mmt") && !a.starts_with("-md="));
+        let run = |args: Vec<String>| {
+            Command::new(&zz).args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
+                .status().unwrap().code().unwrap()
+        };
+        assert_eq!(run(args), 0, "compression");
+        let first = dir.join("out.7z.001");
+        assert!(dir.join("out.7z.003").exists(), "expected several volumes");
+
+        assert_eq!(run(archive_test_args(&first, Some("pw"))), 0, "intact archive passes");
+        assert_ne!(run(archive_test_args(&first, Some("wrong"))), 0, "wrong password fails");
+        assert_ne!(run(archive_test_args(&first, None)), 0, "missing password fails, never prompts");
+
+        let mut f = std::fs::OpenOptions::new().write(true).open(dir.join("out.7z.002")).unwrap();
+        f.seek(SeekFrom::Start(4096)).unwrap();
+        f.write_all(&[0xFF; 64]).unwrap();
+        drop(f);
+        assert_ne!(run(archive_test_args(&first, Some("pw"))), 0, "corrupt middle volume fails");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn cancel_flag_survives_between_compress_and_test() {
+        // Cancel with nothing running (the gap between compress and test) must
+        // be remembered so the next 7-Zip run is skipped, until reset_cancel.
+        let state = SevenZipRunnerState::new();
+        state.cancelled.store(true, Ordering::SeqCst);
+        assert!(state.cancelled.load(Ordering::SeqCst));
+        state.reset_cancel();
+        assert!(!state.cancelled.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn archive_test_args_always_supply_a_password() {
+        let a = archive_test_args(Path::new("/o/x.7z.001"), Some("pw"));
+        assert_eq!(a, vec!["t", "-ppw", "-bsp1", "/o/x.7z.001"]);
+        let b = archive_test_args(Path::new("/o/x.7z"), None);
+        assert_eq!(b[1], "-p", "empty -p so 7-Zip never prompts");
     }
 
     #[test]

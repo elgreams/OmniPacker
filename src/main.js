@@ -46,6 +46,7 @@ const settingsModalOverlay = document.querySelector(".settings-modal-overlay");
 const settingsCloseButton = document.querySelector(".settings-close-button");
 const skipCompressionToggle = document.getElementById("skip-compression-toggle");
 const compressionLevelSelect = document.getElementById("compression-level-select");
+const testArchiveToggle = document.getElementById("test-archive-toggle");
 const outputDirToggle = document.getElementById("output-dir-toggle");
 const outputDirInput = document.getElementById("output-dir-input");
 const outputDirBrowse = document.getElementById("output-dir-browse");
@@ -144,6 +145,8 @@ const settingsState = {
   skipCompression: false,
   // 7-Zip level; Ultra matches every release before the setting existed.
   compressionLevel: "ultra",
+  // Verify the archive (7z t) before the uncompressed copy is deleted.
+  testArchive: false,
   compressionPasswordEnabled: false,
   compressionPassword: "",
   customCompressionArgs: "",
@@ -1259,6 +1262,9 @@ const loadSettings = () => {
       if (COMPRESSION_LEVELS.includes(parsed.compressionLevel)) {
         settingsState.compressionLevel = parsed.compressionLevel;
       }
+      if (typeof parsed.testArchive === "boolean") {
+        settingsState.testArchive = parsed.testArchive;
+      }
       if (typeof parsed.compressionPasswordEnabled === "boolean") {
         settingsState.compressionPasswordEnabled =
           parsed.compressionPasswordEnabled;
@@ -1348,6 +1354,7 @@ const loadSettings = () => {
 const PERSISTED_SETTINGS_KEYS = [
   "skipCompression",
   "compressionLevel",
+  "testArchive",
   "compressionPasswordEnabled",
   "customCompressionArgs",
   "splitArchiveEnabled",
@@ -1555,6 +1562,9 @@ const applySettingsToUI = () => {
   }
   if (compressionLevelSelect) {
     compressionLevelSelect.value = settingsState.compressionLevel;
+  }
+  if (testArchiveToggle) {
+    testArchiveToggle.checked = settingsState.testArchive;
   }
   if (outputDirToggle) {
     outputDirToggle.checked = settingsState.outputDirEnabled;
@@ -3105,6 +3115,7 @@ const buildJobMetadata = (job) => ({
   customCompressionArgs: settingsState.customCompressionArgs,
   splitVolumeSize: resolveSplitVolumeSize(),
   compressionLevel: settingsState.compressionLevel,
+  testArchive: settingsState.testArchive,
   // Global uploader handle, fed into the {{username}} token.
   uploaderName: settingsState.uploaderName || "",
   // Resolved upload date (manual text or today's date), fed into {{upload_date}}.
@@ -3975,6 +3986,13 @@ if (templateCopyButton) {
 if (skipCompressionToggle) {
   skipCompressionToggle.addEventListener("change", () => {
     settingsState.skipCompression = skipCompressionToggle.checked;
+    saveSettings();
+  });
+}
+
+if (testArchiveToggle) {
+  testArchiveToggle.addEventListener("change", () => {
+    settingsState.testArchive = testArchiveToggle.checked;
     saveSettings();
   });
 }
