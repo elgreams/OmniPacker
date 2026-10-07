@@ -52,9 +52,12 @@ else
     APPIMAGETOOL="./appimagetool-x86_64.AppImage"
 fi
 
-# Repack the AppImage
+# Repack the AppImage. APPIMAGE_EXTRACT_AND_RUN lets appimagetool (itself an
+# AppImage) run without FUSE, which GitHub's Ubuntu runners don't provide;
+# without it the repack failed there with no visible error. Output is kept so
+# a future failure shows its cause in the CI log.
 echo "Repacking AppImage..."
-ARCH=x86_64 $APPIMAGETOOL squashfs-root "$APPIMAGE_PATH" > /dev/null 2>&1
+APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 $APPIMAGETOOL squashfs-root "$APPIMAGE_PATH"
 
 # Cleanup
 cd - > /dev/null
