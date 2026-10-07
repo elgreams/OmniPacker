@@ -81,15 +81,30 @@ fn render_template_string(
     template: &str,
     values: &HashMap<String, String>,
 ) -> String {
-    let mut result = template.to_string();
-
-    // Replace {{field}} tokens with values
-    for (key, value) in values {
-        let token = format!("{{{{{}}}}}", key);
-        result = result.replace(&token, value);
+    // Single left-to-right pass over the template. The old version replaced
+    // each key in turn across the whole string, so a value that itself
+    // contained "{{other_token}}" (e.g. a store description or custom free
+    // text) was expanded again or not depending on HashMap iteration order,
+    // which is random per run. Values are now inserted verbatim, exactly like
+    // the JS renderer, and unknown tokens are left as-is.
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(start) = rest.find("{{") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let Some(end) = after.find("}}") else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let key = &after[..end];
+        match values.get(key.trim()) {
+            Some(value) => out.push_str(value),
+            None => out.push_str(&rest[start..start + 2 + end + 2]),
+        }
+        rest = &after[end + 2..];
     }
-
-    result
+    out.push_str(rest);
+    out
 }
 
 /// Gets the block type name for spacing logic
@@ -363,6 +378,23 @@ pub fn write_template_files(
 mod tests {
     use super::*;
     use crate::template_metadata::TemplateDepot;
+
+    #[test]
+    fn values_are_inserted_verbatim_never_re_expanded() {
+        // Regression: a value containing a token was expanded or not depending
+        // on HashMap order (random per process). Must be stable and literal.
+        let mut values = HashMap::new();
+        values.insert("game_description".to_string(), "Use {{username}} here".to_string());
+        values.insert("username".to_string(), "packer".to_string());
+        for _ in 0..50 {
+            assert_eq!(
+                render_template_string("{{game_description}} by {{username}}", &values),
+                "Use {{username}} here by packer"
+            );
+        }
+        // Unknown tokens and unterminated braces pass through untouched.
+        assert_eq!(render_template_string("a {{nope}} b {{ c", &values), "a {{nope}} b {{ c");
+    }
 
     #[test]
     fn test_render_template_string() {

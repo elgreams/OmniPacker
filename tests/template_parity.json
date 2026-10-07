@@ -133,6 +133,18 @@
         }
       ],
       "expected": "Packed October 7, 2026 - 18:30:00 UTC from build February 24, 2025 - 22:02:36 UTC"
+    },
+    {
+      "name": "token_in_free_text_with_padding",
+      "blocks": [
+        {
+          "type": "free_text",
+          "config": {
+            "text": "{{ game_name }} | {{game_description}}"
+          }
+        }
+      ],
+      "expected": "Balatro | A roguelike deckbuilder."
     }
   ]
 }
