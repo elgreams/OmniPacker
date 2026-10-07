@@ -40,6 +40,18 @@ pub struct JobMetadata {
     /// DepotDownloader as `-branchpassword` only when a non-public branch is set.
     #[serde(default)]
     pub branch_password: String,
+    /// Advanced: download only these depots (empty = DepotDownloader's normal
+    /// automatic selection).
+    #[serde(default)]
+    pub depot_ids: Vec<String>,
+    /// Advanced: pinned manifest per entry in `depot_ids` (same order). Empty
+    /// string for an entry means "current manifest for the branch".
+    #[serde(default)]
+    pub manifest_ids: Vec<String>,
+    /// Advanced: build number the user typed for a pinned download. Wins over
+    /// the automatic SteamDB match.
+    #[serde(default)]
+    pub build_id_override: String,
     /// Steam language code for language-specific depots (e.g. "english",
     /// "german", "schinese"). Empty means DepotDownloader's default (english).
     #[serde(default)]
@@ -379,6 +391,81 @@ pub fn resolve_depotdownloader_path(app_handle: &AppHandle) -> Result<PathBuf, S
     }
 
     Ok(sidecar_path)
+}
+
+fn is_numeric_id(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 20 && s.chars().all(|c| c.is_ascii_digit())
+}
+
+/// `-depot`/`-manifest` args for an advanced selection. DepotDownloader needs
+/// either no -manifest at all or one per -depot, so when any manifest is
+/// pinned, unpinned depots are left out of the pin list by splitting: this
+/// returns an error instead, and the frontend requires a manifest for every
+/// depot once any is given. Non-numeric IDs are rejected rather than passed on.
+pub(crate) fn depot_selection_args(job: &JobMetadata) -> Result<Vec<String>, String> {
+    let depots: Vec<&str> = job.depot_ids.iter().map(|d| d.trim()).filter(|d| !d.is_empty()).collect();
+    if depots.is_empty() {
+        return Ok(Vec::new());
+    }
+    if let Some(bad) = depots.iter().find(|d| !is_numeric_id(d)) {
+        return Err(format!("Invalid depot ID: {bad}"));
+    }
+    let manifests: Vec<&str> = job.manifest_ids.iter().map(|m| m.trim()).collect();
+    let pinned = manifests.iter().any(|m| !m.is_empty());
+    if pinned {
+        if manifests.len() != depots.len() || manifests.iter().any(|m| m.is_empty()) {
+            return Err("When pinning a manifest, every selected depot needs one.".to_string());
+        }
+        if let Some(bad) = manifests.iter().find(|m| !is_numeric_id(m)) {
+            return Err(format!("Invalid manifest ID: {bad}"));
+        }
+    }
+    let mut args = Vec::new();
+    for d in &depots {
+        args.push("-depot".to_string());
+        args.push(d.to_string());
+    }
+    if pinned {
+        for m in &manifests {
+            args.push("-manifest".to_string());
+            args.push(m.to_string());
+        }
+    }
+    Ok(args)
+}
+
+/// The label a pinned-manifest download is named with, and where it came from.
+#[derive(Debug, PartialEq)]
+struct PinnedBuildLabel {
+    /// Goes into `<Game>.Build.<label>.<Platform>.<Branch>`.
+    label: String,
+    source: &'static str,
+}
+
+/// Picks the build label for a pinned download: a typed build number wins,
+/// then the SteamDB build released right after the manifest was created, then
+/// `Manifest<id>` so the name never claims a build it isn't.
+fn resolve_pinned_build_id(
+    typed: &str,
+    manifest_created: Option<DateTime<Utc>>,
+    history: impl FnOnce() -> Option<Vec<(String, DateTime<Utc>)>>,
+    primary_manifest: Option<&str>,
+) -> PinnedBuildLabel {
+    let typed = typed.trim();
+    if is_numeric_id(typed) {
+        return PinnedBuildLabel { label: typed.to_string(), source: "entered build number" };
+    }
+    if let Some(created) = manifest_created {
+        if let Some(found) = history()
+            .and_then(|h| crate::steamdb_api::match_manifest_to_build(created, &h))
+        {
+            return PinnedBuildLabel { label: found, source: "matched on SteamDB by manifest date" };
+        }
+    }
+    PinnedBuildLabel {
+        label: format!("Manifest{}", primary_manifest.unwrap_or("Unknown")),
+        source: "build number unknown; using the manifest ID",
+    }
 }
 
 /// Steam language code to pass as `-language`, or `None` for the default
@@ -773,6 +860,39 @@ fn derive_metadata_from_download(
         });
     }
 
+    // Pinned (older) manifests: DepotDownloader names every depot dir after
+    // the branch's CURRENT build, so build_id above would label an old
+    // download with today's build. Resolve the real one: typed override ->
+    // SteamDB match on the primary manifest's creation date -> manifest ID.
+    if job.manifest_ids.iter().any(|m| !m.trim().is_empty()) {
+        let primary_manifest_created = primary_manifest_id.as_ref().and_then(|m| {
+            app_handle
+                .state::<DepotRunnerState>()
+                .inner
+                .lock()
+                .ok()
+                .and_then(|g| g.manifest_timestamps.get(m).copied())
+        });
+        let resolved = resolve_pinned_build_id(
+            &job.build_id_override,
+            primary_manifest_created,
+            || crate::steamdb_api::fetch_build_history(&job.app_id).ok(),
+            primary_manifest_id.as_deref(),
+        );
+        emit_log(
+            app_handle,
+            "system",
+            &format!("Pinned manifest download: labelled as {} ({}).", resolved.label, resolved.source),
+            job_id,
+        );
+        build_id = resolved.label;
+        // The real release date is unknown for an unmatched pin; prefer the
+        // manifest's own timestamp over the current build's SteamDB date.
+        if let Some(created) = primary_manifest_created {
+            build_datetime_utc = Some(created);
+        }
+    }
+
     // Create job metadata
     let mut job_metadata = JobMetadataFile::new(
         job_id.to_string(),
@@ -793,7 +913,11 @@ fn derive_metadata_from_download(
     // finalization; otherwise finalization falls back to the depot/game name.
     job_metadata.install_dir = crate::steamcmd_api::fetch_install_dir(&job.app_id);
 
-    check_downloaded_build_is_current(app_handle, job, job_id, &job_metadata.build_id);
+    // A pinned manifest is deliberately old; comparing it to the current build
+    // would only produce a bogus "old build" warning.
+    if !job.manifest_ids.iter().any(|m| !m.trim().is_empty()) {
+        check_downloaded_build_is_current(app_handle, job, job_id, &job_metadata.build_id);
+    }
 
     // Write job.json
     job_metadata.write_to_dir(staging_dir)?;
@@ -1373,6 +1497,8 @@ fn build_depot_args(job: &JobMetadata, config_dir: Option<&str>) -> Result<Vec<S
         args.push("-language".to_string());
         args.push(lang);
     }
+
+    args.extend(depot_selection_args(job)?);
 
     if job.qr_enabled {
         args.push("-qr".to_string());
@@ -2926,6 +3052,50 @@ mod tests {
     }
 
     #[test]
+    fn depot_selection_args_shapes() {
+        use super::{depot_selection_args, JobMetadata};
+        let job = |depots: &[&str], manifests: &[&str]| -> JobMetadata {
+            serde_json::from_value(serde_json::json!({
+                "appId": "1", "os": "Windows x64", "branch": "public",
+                "username": "", "password": "", "qrEnabled": false,
+                "depotIds": depots, "manifestIds": manifests
+            }))
+            .unwrap()
+        };
+        assert!(depot_selection_args(&job(&[], &[])).unwrap().is_empty());
+        assert_eq!(
+            depot_selection_args(&job(&["3321461", "3321465"], &[])).unwrap(),
+            vec!["-depot", "3321461", "-depot", "3321465"]
+        );
+        assert_eq!(
+            depot_selection_args(&job(&["3321461"], &["6937953032300562656"])).unwrap(),
+            vec!["-depot", "3321461", "-manifest", "6937953032300562656"]
+        );
+        // Mixed pinned/unpinned is rejected (DD needs one -manifest per -depot).
+        assert!(depot_selection_args(&job(&["1", "2"], &["5", ""])).is_err());
+        // Junk never reaches DD's argv.
+        assert!(depot_selection_args(&job(&["12 -debug"], &[])).is_err());
+        assert!(depot_selection_args(&job(&["1"], &["abc"])).is_err());
+    }
+
+    #[test]
+    fn pinned_build_label_priority() {
+        use super::resolve_pinned_build_id;
+        use chrono::TimeZone;
+        let created = chrono::Utc.with_ymd_and_hms(2025, 2, 24, 17, 0, 0).unwrap();
+        let history = || {
+            Some(vec![(
+                "17459173".to_string(),
+                chrono::Utc.with_ymd_and_hms(2025, 2, 24, 18, 21, 58).unwrap(),
+            )])
+        };
+        assert_eq!(resolve_pinned_build_id("16541019", Some(created), history, Some("9")).label, "16541019");
+        assert_eq!(resolve_pinned_build_id("", Some(created), history, Some("9")).label, "17459173");
+        assert_eq!(resolve_pinned_build_id("", Some(created), || None, Some("9")).label, "Manifest9");
+        assert_eq!(resolve_pinned_build_id("", None, history, Some("9")).label, "Manifest9");
+    }
+
+    #[test]
     fn language_arg_only_for_valid_non_default_codes() {
         use super::{language_arg, JobMetadata};
         let job = |lang: &str| {
@@ -3244,6 +3414,9 @@ mod tests {
             os: "Windows x64".to_string(),
             branch: "public".to_string(),
             branch_password: String::new(),
+            depot_ids: Vec::new(),
+            manifest_ids: Vec::new(),
+            build_id_override: String::new(),
             language: String::new(),
             username: String::new(),
             password: String::new(),

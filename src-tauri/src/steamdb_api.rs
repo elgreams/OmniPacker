@@ -137,6 +137,68 @@ fn parse_patchnotes_rss(xml: &str, target_build_id: Option<&str>) -> Result<Date
     Err("No builds found in SteamDB RSS feed".to_string())
 }
 
+/// Fetches every (build_id, release date) the SteamDB patch-notes feed lists
+/// for an app, newest first. The feed only carries recent updates (~10), so
+/// older builds won't appear.
+pub fn fetch_build_history(app_id: &str) -> Result<Vec<(String, DateTime<Utc>)>, String> {
+    let url = format!("https://steamdb.info/api/PatchnotesRSS/?appid={}", app_id);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+    let body = client
+        .get(&url)
+        .header("User-Agent", "OmniPacker/1.0")
+        .send()
+        .map_err(|e| format!("HTTP request failed: {}", e))?
+        .text()
+        .map_err(|e| format!("Failed to read response body: {}", e))?;
+    Ok(parse_build_history(&body))
+}
+
+fn parse_build_history(xml: &str) -> Vec<(String, DateTime<Utc>)> {
+    let item_re = regex::Regex::new(r"<item>([\s\S]*?)</item>").unwrap();
+    let guid_re = regex::Regex::new(r"<guid[^>]*>\s*build#(\d+)\s*</guid>").unwrap();
+    let build_re = regex::Regex::new(r"Build\s+(\d+)").unwrap();
+    let date_re = regex::Regex::new(r"<pubDate>([^<]+)</pubDate>").unwrap();
+    item_re
+        .captures_iter(xml)
+        .filter_map(|item| {
+            let body = &item[1];
+            let id = guid_re
+                .captures(body)
+                .or_else(|| build_re.captures(body))
+                .map(|c| c[1].to_string())?;
+            let date = parse_rfc2822_date(&date_re.captures(body)?[1]).ok()?;
+            Some((id, date))
+        })
+        .collect()
+}
+
+/// Upper bound between a manifest's creation and its build going public.
+/// Devs usually publish within minutes; a day covers slow pipelines without
+/// pairing the manifest with an unrelated later update.
+const MANIFEST_TO_RELEASE_WINDOW_HOURS: i64 = 24;
+
+/// Picks the build a pinned manifest most likely belongs to: the earliest
+/// release at or after the manifest's creation time, within a day. A manifest
+/// is uploaded before (or as) its build goes live, so the matching build is
+/// the next release after it. `None` when nothing in the history fits.
+pub fn match_manifest_to_build(
+    manifest_created: DateTime<Utc>,
+    history: &[(String, DateTime<Utc>)],
+) -> Option<String> {
+    let window = chrono::Duration::hours(MANIFEST_TO_RELEASE_WINDOW_HOURS);
+    // Allow a few minutes of clock skew between Steam's manifest timestamp
+    // and SteamDB's recorded release time.
+    let skew = chrono::Duration::minutes(10);
+    history
+        .iter()
+        .filter(|(_, released)| *released >= manifest_created - skew && *released <= manifest_created + window)
+        .min_by_key(|(_, released)| *released)
+        .map(|(id, _)| id.clone())
+}
+
 /// Parses RFC 2822 date format used in RSS feeds
 /// Example: "Mon, 24 Feb 2025 22:02:36 GMT"
 fn parse_rfc2822_date(date_str: &str) -> Result<DateTime<Utc>, String> {
@@ -250,6 +312,24 @@ mod tests {
     fn no_target_returns_newest_item() {
         let dt = parse_patchnotes_rss(REAL_FEED, None).unwrap();
         assert_eq!((dt.year(), dt.month(), dt.day()), (2025, 2, 24));
+    }
+
+    #[test]
+    fn manifest_matches_next_release_within_a_day() {
+        use chrono::TimeZone;
+        let history = parse_build_history(REAL_FEED);
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].0, "17459173");
+
+        // Manifest made an hour before the Feb 24 18:21 release -> that build.
+        let created = Utc.with_ymd_and_hms(2025, 2, 24, 17, 20, 0).unwrap();
+        assert_eq!(match_manifest_to_build(created, &history).as_deref(), Some("17459173"));
+        // Manifest from the Dec 12 build day -> the Dec build, not the newer one.
+        let created = Utc.with_ymd_and_hms(2024, 12, 12, 17, 0, 0).unwrap();
+        assert_eq!(match_manifest_to_build(created, &history).as_deref(), Some("16541019"));
+        // Weeks before anything in the feed -> no guess.
+        let created = Utc.with_ymd_and_hms(2024, 6, 1, 0, 0, 0).unwrap();
+        assert_eq!(match_manifest_to_build(created, &history), None);
     }
 
     use chrono::Datelike;

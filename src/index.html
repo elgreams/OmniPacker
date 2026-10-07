@@ -153,6 +153,12 @@
                   <option value="arabic">العربية</option>
                 </select>
               </div>
+              <div class="advanced-row">
+                <button type="button" class="advanced-depots-button" data-i18n="advanced.button">
+                  Advanced…
+                </button>
+                <span class="advanced-summary" id="advanced-summary"></span>
+              </div>
             </section>
 
             <section class="panel" aria-label="Branch Manager">
@@ -463,6 +469,35 @@
         <div class="modal-actions">
           <button type="button" class="template-generic-confirm-yes" data-i18n="action.yes">Yes</button>
           <button type="button" class="template-generic-confirm-no" data-i18n="action.no">No</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay advanced-depots-overlay" role="dialog" aria-modal="true">
+      <div class="modal advanced-depots-modal">
+        <div class="modal-title" data-i18n="advanced.title">Advanced: depots and older builds</div>
+        <div class="settings-hint" data-i18n="advanced.hint">
+          Leave everything unchecked for the normal automatic download. Check depots to download only those.
+          To get an older build, paste a manifest ID for every checked depot (find them on SteamDB).
+        </div>
+        <div class="advanced-toolbar">
+          <span class="advanced-app" id="advanced-app"></span>
+          <button type="button" class="advanced-steamdb-button" data-i18n="advanced.steamdb">
+            Open on SteamDB
+          </button>
+        </div>
+        <div class="advanced-depot-list" id="advanced-depot-list"></div>
+        <div class="advanced-build-row">
+          <label for="advanced-build-input" data-i18n="advanced.buildLabel">Build number (optional):</label>
+          <input id="advanced-build-input" type="text" inputmode="numeric" />
+          <span class="settings-hint" data-i18n="advanced.buildHint">
+            Only used with pinned manifests. If empty, OmniPacker looks it up on SteamDB by the manifest date.
+          </span>
+        </div>
+        <div class="advanced-error settings-hint settings-hint-error" id="advanced-error"></div>
+        <div class="modal-actions">
+          <button type="button" class="advanced-clear-button" data-i18n="advanced.clear">Clear</button>
+          <button type="button" class="advanced-done-button" data-i18n="advanced.done">Done</button>
         </div>
       </div>
     </div>

@@ -40,6 +40,7 @@ use template_store::{
     delete_profile, list_profiles, open_profiles_folder, save_profile,
 };
 use update_check::{check_for_update, get_app_version, open_external_url};
+use steamcmd_api::list_app_depots;
 use zip_runner::{cancel_7zip, SevenZipRunnerState};
 use std::sync::OnceLock;
 use tauri::Manager;
@@ -186,7 +187,8 @@ pub fn run() {
             resolve_output_conflict,
             check_for_update,
             get_app_version,
-            open_external_url
+            open_external_url,
+            list_app_depots
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

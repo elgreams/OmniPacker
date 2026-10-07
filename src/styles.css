@@ -704,6 +704,11 @@ body.fixed-layout .output-conflict-modal {
   width: 520px;
 }
 
+body.fixed-layout .advanced-depots-modal {
+  width: 760px;
+  height: 560px;
+}
+
 .modal-overlay.active {
   display: flex;
 }
@@ -1010,6 +1015,90 @@ body.fixed-layout .output-conflict-modal {
 .output-conflict-modal {
   width: min(520px, 92vw);
   height: auto;
+}
+
+.advanced-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.advanced-summary {
+  font-size: 11px;
+  color: #f0ad4e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.advanced-depots-modal {
+  width: min(760px, 94vw);
+  height: min(560px, 90vh);
+}
+
+.advanced-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.advanced-app {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.advanced-depot-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: #111011;
+  border: 1px solid #505050;
+  padding: 4px;
+}
+
+.advanced-depot {
+  display: grid;
+  grid-template-columns: auto 1fr 190px;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  font-size: 12px;
+}
+
+.advanced-depot:nth-child(odd) {
+  background: #1b1a1b;
+}
+
+.advanced-depot-info {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.advanced-depot-tags {
+  opacity: 0.7;
+  margin-left: 6px;
+}
+
+.advanced-depot-manifest {
+  min-width: 0;
+  font-size: 12px;
+}
+
+.advanced-build-row {
+  display: grid;
+  grid-template-columns: auto 160px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.advanced-error:empty {
+  display: none;
 }
 
 .output-conflict-message,

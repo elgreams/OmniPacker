@@ -15,6 +15,16 @@ const qrLoginToggle = document.getElementById("qr-login-toggle");
 const appIdInput = document.getElementById("appid");
 const osDropdown = document.getElementById("os-dropdown");
 const gameLanguageSelect = document.getElementById("game-language-select");
+const advancedDepotsButton = document.querySelector(".advanced-depots-button");
+const advancedSummary = document.getElementById("advanced-summary");
+const advancedOverlay = document.querySelector(".advanced-depots-overlay");
+const advancedAppLabel = document.getElementById("advanced-app");
+const advancedDepotList = document.getElementById("advanced-depot-list");
+const advancedBuildInput = document.getElementById("advanced-build-input");
+const advancedError = document.getElementById("advanced-error");
+const advancedSteamDbButton = document.querySelector(".advanced-steamdb-button");
+const advancedClearButton = document.querySelector(".advanced-clear-button");
+const advancedDoneButton = document.querySelector(".advanced-done-button");
 const branchDropdown = document.getElementById("branch-dropdown");
 const branchOptionsContainer = document.getElementById("branch-options");
 const branchAddInput = document.getElementById("branch-add-input");
@@ -1674,13 +1684,28 @@ const clearStoredTokenIfUnsaved = () => {
   });
 };
 
-const createJob = ({ appId, os, language, branch, branchPassword, username, password, qrEnabled }) => {
+const createJob = ({
+  appId,
+  os,
+  language,
+  depotSelection,
+  buildIdOverride,
+  branch,
+  branchPassword,
+  username,
+  password,
+  qrEnabled,
+}) => {
   const job = {
     id: createJobId(),
     appId,
     os,
     // Steam language code for language-specific depots; "english" is the default.
     language: language || "english",
+    // Advanced selection: [{ depotId, manifestId }] (empty = automatic), plus
+    // an optional typed build number for pinned manifests.
+    depotSelection: depotSelection || [],
+    buildIdOverride: buildIdOverride || "",
     branch,
     branchPassword: branchPassword || "",
     username,
@@ -1800,6 +1825,7 @@ const updateFormInputState = () => {
   // Disable form inputs
   if (appIdInput) appIdInput.disabled = running;
   if (gameLanguageSelect) gameLanguageSelect.disabled = running;
+  if (advancedDepotsButton) advancedDepotsButton.disabled = running;
   setDropdownDisabled(osDropdown, running);
   setDropdownDisabled(branchDropdown, running);
   syncAddToQueueButton();
@@ -3035,6 +3061,9 @@ const buildJobMetadata = (job) => ({
   appId: job.appId || "unknown",
   os: job.os || "Windows x64",
   language: job.language || "english",
+  depotIds: (job.depotSelection || []).map((entry) => entry.depotId),
+  manifestIds: (job.depotSelection || []).map((entry) => entry.manifestId || ""),
+  buildIdOverride: job.buildIdOverride || "",
   branch: job.branch || "public",
   branchPassword: job.branchPassword || "",
   username: job.username || "",
@@ -3319,12 +3348,17 @@ const addJobToQueue = () => {
   if (osValues.length === 0 || branches.length === 0) {
     return;
   }
+  // The advanced selection was picked for a specific AppID; never apply it
+  // to a different game typed afterwards.
+  const advanced =
+    advancedState.appId === appIdValue ? getAdvancedSelection() : { depotSelection: [], buildIdOverride: "" };
 
   let lastJob = null;
   osValues.forEach((os) => {
     branches.forEach((branch) => {
       lastJob = createJob({
         ...credentials,
+        ...advanced,
         os,
         branch: branch.name,
         branchPassword: branch.password,
@@ -3339,6 +3373,7 @@ const addJobToQueue = () => {
   if (appIdInput) {
     appIdInput.value = "";
   }
+  resetAdvancedState();
   renderAll();
 };
 
@@ -3529,6 +3564,12 @@ const renderQueue = () => {
       branch: job.branch || "public",
       os: formatOsLabel(job.os),
     });
+    if (job.depotSelection?.length) {
+      const pinned = job.depotSelection.some((entry) => entry.manifestId);
+      meta.textContent += ` • ${t(pinned ? "advanced.summaryPinned" : "advanced.summaryDepots", {
+        count: job.depotSelection.length,
+      })}`;
+    }
     if (job.language && job.language !== "english") {
       // Show the endonym from the picker (e.g. "Deutsch") rather than the code.
       const option = Array.from(gameLanguageSelect?.options || []).find(
@@ -4058,12 +4099,245 @@ if (deleteLoginButton) {
   });
 }
 
+// ── Advanced depot / older-build picker ──────────────────────────────────
+// Off by default: nothing here applies unless the user opens the picker and
+// checks depots. The selection belongs to one AppID and is consumed by the
+// next "Add to Queue".
+const advancedState = {
+  appId: "",
+  depots: [], // from list_app_depots
+  selected: new Map(), // depotId -> manifestId ("" = current)
+  buildIdOverride: "",
+};
+
+const resetAdvancedState = () => {
+  advancedState.appId = "";
+  advancedState.depots = [];
+  advancedState.selected = new Map();
+  advancedState.buildIdOverride = "";
+  syncAdvancedSummary();
+};
+
+const getAdvancedSelection = () => ({
+  depotSelection: Array.from(advancedState.selected, ([depotId, manifestId]) => ({
+    depotId,
+    manifestId: manifestId.trim(),
+  })),
+  buildIdOverride: advancedState.buildIdOverride.trim(),
+});
+
+const syncAdvancedSummary = () => {
+  if (!advancedSummary) {
+    return;
+  }
+  const count = advancedState.selected.size;
+  if (count === 0) {
+    advancedSummary.textContent = "";
+    return;
+  }
+  const pinned = Array.from(advancedState.selected.values()).some((m) => m.trim());
+  advancedSummary.textContent = t(pinned ? "advanced.summaryPinned" : "advanced.summaryDepots", {
+    count,
+  });
+};
+
+// Returns an error message, or "" when the selection is usable. Mirrors the
+// backend rule: once any manifest is pinned, every checked depot needs one.
+const validateAdvancedSelection = () => {
+  const entries = Array.from(advancedState.selected.values()).map((m) => m.trim());
+  if (entries.some((m) => m && !/^\d+$/.test(m))) {
+    return t("advanced.errorManifestNumeric");
+  }
+  if (entries.some((m) => m) && entries.some((m) => !m)) {
+    return t("advanced.errorManifestAll");
+  }
+  const build = advancedState.buildIdOverride.trim();
+  if (build && !/^\d+$/.test(build)) {
+    return t("advanced.errorBuildNumeric");
+  }
+  return "";
+};
+
+const describeDepot = (depot) => {
+  const tags = [];
+  if (depot.shared) tags.push(t("advanced.tagShared"));
+  if (depot.dlcAppid) tags.push(t("advanced.tagDlc"));
+  if (depot.oslist) tags.push(depot.oslist);
+  if (depot.osarch) tags.push(`${depot.osarch}-bit`);
+  if (depot.language) tags.push(depot.language);
+  if (depot.realm && depot.realm !== "steamglobal") tags.push(depot.realm);
+  return tags.join(" · ");
+};
+
+const renderAdvancedDepots = () => {
+  if (!advancedDepotList) {
+    return;
+  }
+  advancedDepotList.textContent = "";
+  advancedState.depots.forEach((depot) => {
+    const row = document.createElement("label");
+    row.className = "advanced-depot";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = advancedState.selected.has(depot.depotId);
+
+    const info = document.createElement("span");
+    info.className = "advanced-depot-info";
+    info.textContent = `${depot.depotId}  ${depot.name || ""}`;
+    info.title = depot.publicManifest
+      ? t("advanced.currentManifest", { manifest: depot.publicManifest })
+      : "";
+    const tags = document.createElement("span");
+    tags.className = "advanced-depot-tags";
+    tags.textContent = describeDepot(depot);
+    info.appendChild(tags);
+
+    const manifest = document.createElement("input");
+    manifest.type = "text";
+    manifest.inputMode = "numeric";
+    manifest.className = "advanced-depot-manifest";
+    manifest.placeholder = t("advanced.manifestPlaceholder");
+    manifest.value = advancedState.selected.get(depot.depotId) || "";
+    manifest.disabled = !checkbox.checked;
+
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        advancedState.selected.set(depot.depotId, manifest.value);
+      } else {
+        advancedState.selected.delete(depot.depotId);
+      }
+      manifest.disabled = !checkbox.checked;
+      syncAdvancedSummary();
+      setAdvancedError("");
+    });
+    manifest.addEventListener("input", () => {
+      if (advancedState.selected.has(depot.depotId)) {
+        advancedState.selected.set(depot.depotId, manifest.value);
+        syncAdvancedSummary();
+        setAdvancedError("");
+      }
+    });
+
+    row.appendChild(checkbox);
+    row.appendChild(info);
+    row.appendChild(manifest);
+    advancedDepotList.appendChild(row);
+  });
+};
+
+const setAdvancedError = (message) => {
+  if (advancedError) {
+    advancedError.textContent = message || "";
+  }
+};
+
+const openAdvancedPicker = async () => {
+  const appId = appIdInput?.value?.trim() || "";
+  if (!/^\d+$/.test(appId)) {
+    window.alert(t("queue.appIdInvalid"));
+    appIdInput?.focus();
+    return;
+  }
+  if (advancedState.appId !== appId) {
+    resetAdvancedState();
+    advancedState.appId = appId;
+  }
+  if (advancedAppLabel) {
+    advancedAppLabel.textContent = t("queue.appId", { appId });
+  }
+  if (advancedBuildInput) {
+    advancedBuildInput.value = advancedState.buildIdOverride;
+  }
+  setAdvancedError("");
+  advancedOverlay?.classList.add("active");
+
+  if (advancedState.depots.length || !tauriInvoke) {
+    renderAdvancedDepots();
+    return;
+  }
+  if (advancedDepotList) {
+    advancedDepotList.textContent = t("advanced.loading");
+  }
+  try {
+    const depots = await tauriInvoke("list_app_depots", { appId });
+    if (advancedState.appId !== appId) {
+      return; // AppID changed while loading
+    }
+    advancedState.depots = Array.isArray(depots) ? depots : [];
+    if (advancedState.depots.length === 0 && advancedDepotList) {
+      advancedDepotList.textContent = t("advanced.noDepots");
+      return;
+    }
+    renderAdvancedDepots();
+  } catch (error) {
+    if (advancedDepotList) {
+      advancedDepotList.textContent = t("advanced.loadFailed", { error });
+    }
+  }
+};
+
+const closeAdvancedPicker = () => {
+  const error = validateAdvancedSelection();
+  if (error) {
+    setAdvancedError(error);
+    return;
+  }
+  advancedOverlay?.classList.remove("active");
+  syncAdvancedSummary();
+};
+
+if (advancedDepotsButton) {
+  advancedDepotsButton.addEventListener("click", () => {
+    void openAdvancedPicker();
+  });
+}
+if (advancedDoneButton) {
+  advancedDoneButton.addEventListener("click", closeAdvancedPicker);
+}
+if (advancedClearButton) {
+  advancedClearButton.addEventListener("click", () => {
+    advancedState.selected = new Map();
+    advancedState.buildIdOverride = "";
+    if (advancedBuildInput) {
+      advancedBuildInput.value = "";
+    }
+    setAdvancedError("");
+    renderAdvancedDepots();
+    syncAdvancedSummary();
+  });
+}
+if (advancedBuildInput) {
+  advancedBuildInput.addEventListener("input", () => {
+    advancedState.buildIdOverride = advancedBuildInput.value;
+    setAdvancedError("");
+  });
+}
+if (advancedSteamDbButton) {
+  advancedSteamDbButton.addEventListener("click", () => {
+    if (advancedState.appId && tauriInvoke) {
+      void tauriInvoke("open_external_url", {
+        url: `https://steamdb.info/app/${advancedState.appId}/depots/`,
+      }).catch((error) => console.debug("[OmniPacker] Failed to open SteamDB:", error));
+    }
+  });
+}
+// A different AppID invalidates a selection made for the previous one.
+if (appIdInput) {
+  appIdInput.addEventListener("input", () => {
+    if (advancedState.appId && appIdInput.value.trim() !== advancedState.appId) {
+      resetAdvancedState();
+    }
+  });
+}
+
 // Escape dismisses the topmost dismissible modal. Ordered topmost-first so a
 // confirm stacked over the template editor closes before the editor does.
 // Job-bound prompts (output conflict, Steam Guard, QR) are deliberately left
 // out: closing them by accident would stall or abandon a running job.
 const ESCAPE_DISMISSIBLE_MODALS = [
   [templateGenericConfirmOverlay, () => closeGenericConfirm(false)],
+  [advancedOverlay, () => closeAdvancedPicker()],
   [templateSaveOverlay, () => closeSaveProfileModal()],
   [templateModalOverlay, () => void closeTemplateEditor()],
   [settingsModalOverlay, () => closeSettingsModal()],

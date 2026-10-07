@@ -81,6 +81,7 @@ pub fn build_preflight_args(
         args.push("-language".to_string());
         args.push(lang);
     }
+    args.extend(crate::depot_runner::depot_selection_args(job)?);
 
     // Authentication
     if job.qr_enabled {

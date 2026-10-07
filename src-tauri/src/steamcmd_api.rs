@@ -236,6 +236,84 @@ pub fn fetch_install_dir(appid: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// One depot as shown in the advanced depot picker.
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DepotListEntry {
+    pub depot_id: String,
+    /// Display name: the DLC's name for DLC depots, else the depot's own
+    /// appinfo name, else empty (the UI shows the ID).
+    pub name: String,
+    pub oslist: String,
+    pub osarch: String,
+    pub language: String,
+    pub realm: String,
+    pub dlc_appid: String,
+    /// Shared redistributable (owned by another app, e.g. 228980).
+    pub shared: bool,
+    /// Current public manifest, when the mirror exposes it.
+    pub public_manifest: String,
+}
+
+/// Lists an app's depots for the advanced picker (best-effort, community
+/// mirror). DepotDownloader still enforces ownership/branch rules at download.
+#[tauri::command]
+pub async fn list_app_depots(app_id: String) -> Result<Vec<DepotListEntry>, String> {
+    let app_id = app_id.trim().to_string();
+    if app_id.is_empty() || !app_id.chars().all(|c| c.is_ascii_digit()) {
+        return Err("Enter a numeric AppID first.".to_string());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let data = fetch_appinfo(&app_id)?;
+        let mut entries = parse_depot_list(&data);
+        // Name DLC depots after their DLC app (one lookup per distinct DLC).
+        let mut cache: HashMap<String, Option<String>> = HashMap::new();
+        for entry in entries.iter_mut().filter(|e| e.name.is_empty() && !e.dlc_appid.is_empty()) {
+            let name = cache
+                .entry(entry.dlc_appid.clone())
+                .or_insert_with(|| fetch_app_name(&entry.dlc_appid))
+                .clone();
+            if let Some(name) = name {
+                entry.name = name;
+            }
+        }
+        Ok(entries)
+    })
+    .await
+    .map_err(|e| format!("Depot lookup failed: {e}"))?
+}
+
+fn parse_depot_list(app_data: &Value) -> Vec<DepotListEntry> {
+    let Some(depots) = app_data.get("depots").and_then(|d| d.as_object()) else {
+        return Vec::new();
+    };
+    let s = |v: Option<&Value>| v.and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let mut out: Vec<DepotListEntry> = depots
+        .iter()
+        .filter(|(id, _)| id.chars().all(|c| c.is_ascii_digit()))
+        .map(|(id, d)| {
+            let config = d.get("config");
+            DepotListEntry {
+                depot_id: id.clone(),
+                name: s(d.get("name")),
+                oslist: s(config.and_then(|c| c.get("oslist"))),
+                osarch: s(config.and_then(|c| c.get("osarch"))),
+                language: s(config.and_then(|c| c.get("language"))),
+                realm: s(config.and_then(|c| c.get("realm"))),
+                dlc_appid: s(d.get("dlcappid")),
+                shared: d.get("sharedinstall").and_then(|v| v.as_str()) == Some("1")
+                    || crate::shared_depots::is_shared_depot(id),
+                public_manifest: s(d
+                    .get("manifests")
+                    .and_then(|m| m.get("public"))
+                    .and_then(|p| p.get("gid"))),
+            }
+        })
+        .collect();
+    out.sort_by_key(|e| e.depot_id.parse::<u64>().unwrap_or(u64::MAX));
+    out
+}
+
 /// What appinfo says about an app's DLC, for the post-download DLC report.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct DlcCatalog {
@@ -447,6 +525,26 @@ mod tests {
         });
         let map = parse_shared_depots(&data, "555");
         assert_eq!(map.get("999"), Some(&"555".to_string()));
+    }
+
+    #[test]
+    fn test_parse_depot_list() {
+        let data = serde_json::json!({ "depots": {
+            "3321465": { "config": { "language": "french", "oslist": "windows", "osarch": "64" },
+                         "manifests": { "public": { "gid": "111" } } },
+            "228989": { "config": { "oslist": "windows" }, "depotfromapp": "228980", "sharedinstall": "1" },
+            "5001841": { "config": { "oslist": "windows" }, "dlcappid": "5001840" },
+            "2593343": { "config": { "oslist": "windows", "realm": "steamchina" } },
+            "branches": { "public": { "buildid": "1" } }
+        }});
+        let list = parse_depot_list(&data);
+        let ids: Vec<&str> = list.iter().map(|e| e.depot_id.as_str()).collect();
+        assert_eq!(ids, vec!["228989", "2593343", "3321465", "5001841"]);
+        assert!(list[0].shared);
+        assert_eq!(list[1].realm, "steamchina");
+        assert_eq!(list[2].language, "french");
+        assert_eq!(list[2].public_manifest, "111");
+        assert_eq!(list[3].dlc_appid, "5001840");
     }
 
     #[test]
