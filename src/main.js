@@ -4171,10 +4171,24 @@ if (compressionPasswordToggle) {
 }
 
 if (compressionPasswordInput) {
+  // Keep the in-memory value current on every keystroke, but write it to disk
+  // only once typing pauses (and on blur), not once per character.
+  let passwordSaveTimer = null;
+  const flushPasswordSave = () => {
+    if (passwordSaveTimer) {
+      window.clearTimeout(passwordSaveTimer);
+      passwordSaveTimer = null;
+    }
+    persistCompressionPassword();
+  };
   compressionPasswordInput.addEventListener("input", () => {
     settingsState.compressionPassword = compressionPasswordInput.value;
-    persistCompressionPassword();
+    if (passwordSaveTimer) {
+      window.clearTimeout(passwordSaveTimer);
+    }
+    passwordSaveTimer = window.setTimeout(flushPasswordSave, 500);
   });
+  compressionPasswordInput.addEventListener("blur", flushPasswordSave);
 }
 
 if (customCompressionArgsInput) {
