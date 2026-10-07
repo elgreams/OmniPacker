@@ -25,7 +25,7 @@ use crate::steamdb_api::fetch_build_date;
 use crate::template_metadata::{TemplateMetadata, TemplateMetadataState};
 use crate::template_renderer::{write_template_files, TemplateProfile};
 use crate::zip_runner::{
-    calculate_7z_compression_args, filter_custom_args, run_7zip_blocking, SevenZipOutcome,
+    calculate_7z_compression_args, filter_custom_args, CompressionLevel, run_7zip_blocking, SevenZipOutcome,
     SevenZipRunnerState,
 };
 
@@ -77,6 +77,9 @@ pub struct JobMetadata {
     /// 7-Zip emit `archive.7z.001`, `.002`, … instead of a single file.
     #[serde(default)]
     pub split_volume_size: String,
+    /// 7-Zip compression level; absent in older payloads, which means Ultra.
+    #[serde(default)]
+    pub compression_level: CompressionLevel,
     /// Global uploader handle (from the "Uploader name" setting). Injected into
     /// the `{{username}}` token for any profile that uses it. Empty when unset.
     #[serde(default)]
@@ -1353,6 +1356,7 @@ fn compress_output(
     compression_password: Option<&str>,
     custom_compression_args: Option<&str>,
     split_volume_size: Option<&str>,
+    level: CompressionLevel,
 ) -> Result<std::path::PathBuf, CompressionError> {
     let archive_path = resolve_archive_path(output_path);
 
@@ -1378,6 +1382,7 @@ fn compress_output(
         compression_password,
         custom_compression_args,
         split_volume_size,
+        level,
     );
     let redacted_args = redact_7z_password_args(&args);
 
@@ -2041,6 +2046,7 @@ fn run_depotdownloader_worker(
                                 compression_password,
                                 custom_compression_args,
                                 split_volume_size,
+                                job_for_monitor.compression_level,
                             ) {
                                 Ok(archive_path) => {
                                     emit_log(
@@ -3434,6 +3440,7 @@ mod tests {
             compression_password: String::new(),
             custom_compression_args: String::new(),
             split_volume_size: String::new(),
+            compression_level: Default::default(),
             uploader_name: String::new(),
             upload_date: String::new(),
             template_profiles: Vec::new(),

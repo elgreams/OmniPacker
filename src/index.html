@@ -252,6 +252,21 @@
           </div>
 
           <div class="settings-group">
+            <label class="settings-label" for="compression-level-select" data-i18n="settings.compressionLevel">
+              Compression level:
+            </label>
+            <select id="compression-level-select" class="settings-select">
+              <option value="ultra" data-i18n="settings.compressionLevel.ultra">Ultra (smallest, slowest)</option>
+              <option value="maximum" data-i18n="settings.compressionLevel.maximum">Maximum</option>
+              <option value="normal" data-i18n="settings.compressionLevel.normal">Normal</option>
+              <option value="fast" data-i18n="settings.compressionLevel.fast">Fast (largest, quickest)</option>
+            </select>
+            <span class="settings-hint" data-i18n="settings.compressionLevelHint">
+              Ultra gives the smallest archive but can take hours on very large games.
+            </span>
+          </div>
+
+          <div class="settings-group">
             <label class="settings-checkbox-row">
               <input id="output-dir-toggle" type="checkbox" />
               <span data-i18n="settings.outputDirToggle">Use custom output folder</span>

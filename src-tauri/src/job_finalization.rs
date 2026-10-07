@@ -878,7 +878,14 @@ mod e2e {
 
         // 3. Compress with the bundled 7-Zip and the real arg builder.
         let archive = resolve_archive_path(&final_dir);
-        let args = crate::zip_runner::calculate_7z_compression_args(&final_dir, &archive, None, None, None);
+        let args = crate::zip_runner::calculate_7z_compression_args(
+            &final_dir,
+            &archive,
+            None,
+            None,
+            None,
+            crate::zip_runner::CompressionLevel::default(),
+        );
         let zz = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries/linux-x64/7zz");
         let status = std::process::Command::new(&zz).args(&args).stdout(std::process::Stdio::null()).status().unwrap();
         assert!(status.success(), "7-Zip failed");

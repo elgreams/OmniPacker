@@ -214,6 +214,39 @@ pub fn run_7zip_blocking(
     }
 }
 
+/// How hard 7-Zip compresses. Ultra (`-mx9`) is the historical default and
+/// gives the smallest archives; the lower levels trade size for time, which
+/// matters on 100+ GB games where Ultra can take hours.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CompressionLevel {
+    Fast,
+    Normal,
+    Maximum,
+    #[default]
+    Ultra,
+}
+
+impl CompressionLevel {
+    fn mx(self) -> u8 {
+        match self {
+            CompressionLevel::Fast => 1,
+            CompressionLevel::Normal => 5,
+            CompressionLevel::Maximum => 7,
+            CompressionLevel::Ultra => 9,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            CompressionLevel::Fast => "Fast",
+            CompressionLevel::Normal => "Normal",
+            CompressionLevel::Maximum => "Maximum",
+            CompressionLevel::Ultra => "Ultra",
+        }
+    }
+}
+
 /// Calculates optimal 7-Zip compression arguments based on CPU cores.
 /// Prioritizes smallest file size with `-mx9` (ultra compression).
 /// Thread count is adapted to prevent system lockup on weak hardware.
@@ -257,6 +290,7 @@ pub fn calculate_7z_compression_args(
     password: Option<&str>,
     custom_args: Option<&str>,
     split_volume_size: Option<&str>,
+    level: CompressionLevel,
 ) -> Vec<String> {
     const MB: u64 = 1024 * 1024;
     const GB: u64 = 1024 * MB;
@@ -367,7 +401,7 @@ pub fn calculate_7z_compression_args(
     let mut args = vec![
         "a".to_string(),                                    // Add to archive
         "-t7z".to_string(),                                 // 7z format (best compression)
-        "-mx9".to_string(),                                 // Ultra compression level
+        format!("-mx{}", level.mx()),                       // Compression level (Ultra = 9)
         format!("-mmt{}", threads),                         // Multi-threading
         format!("-md={}", dict_label),                      // Dictionary size tuned by resources
         "-bsp1".to_string(),                                // Progress output to stdout
@@ -703,6 +737,7 @@ mod tests {
             None,
             None,
             Some("100m"),
+            CompressionLevel::default(),
         );
         let v_idx = args.iter().position(|a| a == "-v100m").expect("-v arg present");
         let archive_idx = args
@@ -720,6 +755,7 @@ mod tests {
             None,
             None,
             None,
+            CompressionLevel::default(),
         );
         assert!(none.iter().all(|a| !a.starts_with("-v")));
 
@@ -729,8 +765,35 @@ mod tests {
             None,
             None,
             Some("   "),
+            CompressionLevel::default(),
         );
         assert!(blank.iter().all(|a| !a.starts_with("-v")));
+    }
+
+    #[test]
+    fn compression_level_maps_to_mx_and_custom_mx_overrides() {
+        let args = |level, custom| {
+            calculate_7z_compression_args(
+                Path::new("/tmp/out"),
+                Path::new("/tmp/out.7z"),
+                None,
+                custom,
+                None,
+                level,
+            )
+        };
+        let mx = |a: &Vec<String>| a.iter().filter(|x| x.starts_with("-mx")).cloned().collect::<Vec<_>>();
+        assert_eq!(mx(&args(CompressionLevel::Ultra, None)), vec!["-mx9"]);
+        assert_eq!(mx(&args(CompressionLevel::Maximum, None)), vec!["-mx7"]);
+        assert_eq!(mx(&args(CompressionLevel::Normal, None)), vec!["-mx5"]);
+        assert_eq!(mx(&args(CompressionLevel::Fast, None)), vec!["-mx1"]);
+        // A user's own -mx comes after ours, so 7-Zip uses it (last switch wins).
+        let a = args(CompressionLevel::Ultra, Some("-mx3"));
+        assert_eq!(mx(&a), vec!["-mx9", "-mx3"]);
+        // Older job payloads without the field get the historical Ultra.
+        let legacy: CompressionLevel = serde_json::from_value(serde_json::json!("ultra")).unwrap();
+        assert_eq!(legacy, CompressionLevel::Ultra);
+        assert_eq!(CompressionLevel::default(), CompressionLevel::Ultra);
     }
 
     #[test]
@@ -751,6 +814,7 @@ mod tests {
             None,
             None,
             None,
+            CompressionLevel::default(),
         );
         let source = args.last().expect("source arg present");
         let expected = Path::new("/tmp/out").join("*").to_string_lossy().to_string();
