@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use tauri::AppHandle;
@@ -92,10 +92,16 @@ pub fn cleanup_staging_dir(app_handle: &AppHandle, job_id: &str) -> Result<(), S
 /// Deletes any orphaned staging directories left behind by interrupted runs.
 pub fn cleanup_orphaned_staging(app_handle: &AppHandle) -> Result<usize, String> {
     let scratch_dir = resolve_scratch_dir(app_handle)?;
+    // Half-assembled outputs (`.tmp_<job_id>`) from a run that crashed or was
+    // force-closed mid-finalization. They hold a full copy of the game and
+    // nothing else ever removes them. Safe to delete at startup because the
+    // single-instance guard means no other job can be using them.
+    let mut removed = remove_orphaned_temp_outputs(&scratch_dir);
+
     let staging_root = scratch_dir.join("staging");
 
     if !staging_root.exists() {
-        return Ok(0);
+        return Ok(removed);
     }
 
     let entries = fs::read_dir(&staging_root).map_err(|err| {
@@ -106,7 +112,6 @@ pub fn cleanup_orphaned_staging(app_handle: &AppHandle) -> Result<usize, String>
         )
     })?;
 
-    let mut removed = 0usize;
     let mut errors = Vec::new();
 
     for entry in entries {
@@ -145,9 +150,46 @@ pub fn cleanup_orphaned_staging(app_handle: &AppHandle) -> Result<usize, String>
     Ok(removed)
 }
 
+/// Deletes `.tmp_<job_id>` assembly dirs directly under `scratch_dir`.
+/// Matches the exact name shape finalization uses (job IDs start with a
+/// four-digit year), so unrelated folders in a custom output dir are never
+/// touched. Returns how many were removed; failures are skipped.
+fn remove_orphaned_temp_outputs(scratch_dir: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(scratch_dir) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .and_then(|n| n.strip_prefix(".tmp_"))
+                .is_some_and(|id| id.len() > 4 && id[..4].chars().all(|c| c.is_ascii_digit()))
+        })
+        .filter(|e| fs::remove_dir_all(e.path()).is_ok())
+        .count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn orphaned_temp_outputs_are_removed_and_nothing_else() {
+        let dir = std::env::temp_dir().join(format!("omnipacker_tmpsweep_{}", generate_short_id()));
+        for name in [".tmp_2026-10-07T12-00-00Z_abc123", ".tmp_notajob", "Game.Build.1.Win64.Public", "staging"] {
+            fs::create_dir_all(dir.join(name).join("inner")).unwrap();
+        }
+        fs::write(dir.join(".tmp_2026-file"), b"x").unwrap(); // a file, not a dir
+        assert_eq!(remove_orphaned_temp_outputs(&dir), 1);
+        assert!(!dir.join(".tmp_2026-10-07T12-00-00Z_abc123").exists());
+        assert!(dir.join(".tmp_notajob").exists());
+        assert!(dir.join("Game.Build.1.Win64.Public").exists());
+        assert!(dir.join("staging").exists());
+        assert!(dir.join(".tmp_2026-file").exists());
+        fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn test_generate_job_id_format() {

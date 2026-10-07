@@ -107,19 +107,25 @@ pub fn finalize_job(
     let (temp_output_path, collisions) =
         build_temp_output(app_handle, job_id, &staging_dir, &job_metadata)?;
 
-    // Step 6: Remove existing output if overwrite was selected
+    // Step 6: Remove existing output if overwrite was selected. Any failure
+    // here must also drop the freshly assembled temp copy (it holds the whole
+    // game, and nothing else ever sweeps it).
     if overwrite_existing {
-        remove_existing_output(&final_output_path)?;
-        if let Some(path) = archive_path.as_ref() {
+        let removed = remove_existing_output(&final_output_path).and_then(|()| {
+            let Some(path) = archive_path.as_ref() else {
+                return Ok(());
+            };
             // Removes the single-file archive AND any split volumes
             // (.7z.001, .002, ...) so a re-run never collides with them.
             crate::depot_runner::remove_archive_outputs(path);
-            if let Some(left) = existing_archive_output(path) {
-                return Err(format!(
-                    "Failed to remove existing archive: {}",
-                    left.display()
-                ));
+            match existing_archive_output(path) {
+                Some(left) => Err(format!("Failed to remove existing archive: {}", left.display())),
+                None => Ok(()),
             }
+        });
+        if let Err(err) = removed {
+            let _ = fs::remove_dir_all(&temp_output_path);
+            return Err(err);
         }
     }
 
