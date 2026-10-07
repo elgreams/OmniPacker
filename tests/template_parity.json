@@ -11,6 +11,7 @@
     "website": "https://www.playbalatro.com",
     "username": "packer",
     "upload_date": "June 25, 2026",
+    "upload_datetime_utc": "October 7, 2026 - 18:30:00 UTC",
     "primary_depot_id": "2379781",
     "primary_manifest_id": "4851806656204679952",
     "depots": [
@@ -120,6 +121,18 @@
         }
       ],
       "expected": "[spoiler=Depots]\n228989\n2379781\n[/spoiler]\nv18674832"
+    },
+    {
+      "name": "upload_datetime_token",
+      "blocks": [
+        {
+          "type": "uploaded_version",
+          "config": {
+            "template": "Packed {{upload_datetime_utc}} from build {{build_datetime_utc}}"
+          }
+        }
+      ],
+      "expected": "Packed October 7, 2026 - 18:30:00 UTC from build February 24, 2025 - 22:02:36 UTC"
     }
   ]
 }

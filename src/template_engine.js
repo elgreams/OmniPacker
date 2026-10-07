@@ -30,6 +30,9 @@ export const TEMPLATE_SINGLE_FIELDS = [
   // end of the chip row. username comes from the "Uploader name" setting.
   "username",
   "upload_date",
+  // When the package was produced (stamped at job time). Lets a custom profile
+  // show pack time; the built-ins keep the Steam build date on both lines.
+  "upload_datetime_utc",
 ];
 export const TEMPLATE_DEPOT_FIELDS = ["depot_id", "depot_name", "manifest_id"];
 
@@ -78,7 +81,7 @@ export const renderTemplateString = (
 // come from Settings rather than the job ({username}/{upload_date}) and the
 // i18n error formatter (main.js passes `t`).
 export const renderTemplateOutput = (blocks, metadata, opts) => {
-  const { username = "", uploadDate = "", formatError } = opts;
+  const { username = "", uploadDate = "", uploadDateTimeUtc = "", formatError } = opts;
   if (!metadata) {
     return { error: formatError("template.error.noMetadata") };
   }
@@ -94,6 +97,7 @@ export const renderTemplateOutput = (blocks, metadata, opts) => {
     website: metadata.website || "",
     username,
     upload_date: uploadDate,
+    upload_datetime_utc: uploadDateTimeUtc,
     // Scalar primary-depot tokens, mirroring the backend TemplateMetadata so
     // preview matches job output.
     primary_depot_id: metadata.primary_depot_id || "",

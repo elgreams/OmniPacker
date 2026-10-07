@@ -123,6 +123,7 @@ pub fn render_template(
     base_values.insert("website".to_string(), metadata.website.clone());
     base_values.insert("username".to_string(), metadata.username.clone());
     base_values.insert("upload_date".to_string(), metadata.upload_date.clone());
+    base_values.insert("upload_datetime_utc".to_string(), metadata.upload_datetime_utc.clone());
     base_values.insert("primary_depot_id".to_string(), metadata.primary_depot_id.clone());
     base_values.insert("primary_manifest_id".to_string(), metadata.primary_manifest_id.clone());
 
@@ -388,6 +389,7 @@ mod tests {
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
             upload_date: String::new(),
+            upload_datetime_utc: String::new(),
             primary_depot_id: String::new(),
             primary_manifest_id: String::new(),
             depots: vec![
@@ -453,6 +455,7 @@ mod tests {
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
             upload_date: String::new(),
+            upload_datetime_utc: String::new(),
             primary_depot_id: String::new(),
             primary_manifest_id: String::new(),
             depots: vec![TemplateDepot {
@@ -490,6 +493,7 @@ mod tests {
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
             upload_date: String::new(),
+            upload_datetime_utc: String::new(),
             primary_depot_id: String::new(),
             primary_manifest_id: String::new(),
             depots: vec![],
@@ -518,6 +522,7 @@ mod tests {
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
             upload_date: String::new(),
+            upload_datetime_utc: String::new(),
             primary_depot_id: String::new(),
             primary_manifest_id: String::new(),
             depots: vec![TemplateDepot {
@@ -596,6 +601,7 @@ mod tests {
             website: "https://www.playbalatro.com".to_string(),
             username: String::new(),
             upload_date: String::new(),
+            upload_datetime_utc: String::new(),
             primary_depot_id: String::new(),
             primary_manifest_id: String::new(),
             depots: vec![TemplateDepot {
@@ -692,6 +698,7 @@ mod tests {
             website: s("website"),
             username: s("username"),
             upload_date: s("upload_date"),
+            upload_datetime_utc: s("upload_datetime_utc"),
             primary_depot_id: s("primary_depot_id"),
             primary_manifest_id: s("primary_manifest_id"),
             depots: m["depots"]

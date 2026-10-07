@@ -852,8 +852,22 @@ const renderTemplateOutput = (blocks, metadata) =>
   renderTemplateOutputShared(blocks, metadata, {
     username: settingsState.uploaderName || "",
     uploadDate: resolveUploadDate(),
+    // Preview shows "now"; real jobs stamp the time they finish packing.
+    uploadDateTimeUtc: formatUtcDateTime(new Date()),
     formatError: t,
   });
+
+// Same "February 24, 2025 - 22:02:36 UTC" style the backend writes.
+const formatUtcDateTime = (date) => {
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${months[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()} - ${pad(
+    date.getUTCHours(),
+  )}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())} UTC`;
+};
 
 const renderTemplatePreview = () => {
   if (!templatePreviewOutput) {

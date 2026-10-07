@@ -167,6 +167,7 @@ export default {
   "template.help.field.website": "URL официального сайта игры.",
   "template.help.field.username": "Ваше имя загрузившего из настроек.",
   "template.help.field.upload_date": "Дата загрузки из настроек.",
+  "template.help.field.upload_datetime_utc": "Когда был создан этот пакет (UTC). Встроенные профили используют дату сборки Steam.",
   "template.help.field.depot_id": "Числовой ID депо.",
   "template.help.field.depot_name": "Название депо.",
   "template.help.field.manifest_id": "Числовой ID манифеста депо.",

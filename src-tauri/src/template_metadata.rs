@@ -1,4 +1,4 @@
-use chrono::{Datelike, Timelike, Utc};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use serde::Serialize;
 use std::sync::Mutex;
 use tauri::State;
@@ -33,6 +33,11 @@ pub struct TemplateMetadata {
     /// or today's date), not job.json, so it is populated separately after
     /// construction (empty by default). Feeds the `{{upload_date}}` token.
     pub upload_date: String,
+    /// When this package was produced (UTC, same format as
+    /// `build_datetime_utc`). Feeds `{{upload_datetime_utc}}`. Set right before
+    /// templates are written; the built-in profiles don't use it, they keep the
+    /// Steam build date on both lines like SuperSteamPacker does.
+    pub upload_datetime_utc: String,
     /// Primary depot's ID. Scalar counterpart to the per-depot `{{depot_id}}`
     /// loop token, so single-field blocks (title/version/free text) can
     /// reference the main game depot. Empty when no primary depot is known.
@@ -69,16 +74,7 @@ impl TemplateMetadata {
             .map(|d| d.manifest_id.clone())
             .unwrap_or_default();
 
-        let month_name = month_name(timestamp.month());
-        let build_datetime_utc = format!(
-            "{} {}, {} - {:02}:{:02}:{:02} UTC",
-            month_name,
-            timestamp.day(),
-            timestamp.year(),
-            timestamp.hour(),
-            timestamp.minute(),
-            timestamp.second()
-        );
+        let build_datetime_utc = format_utc_datetime(timestamp);
 
         Self {
             game_name: metadata.game_name.clone(),
@@ -95,6 +91,7 @@ impl TemplateMetadata {
             // The upload date is injected later via set_upload_date; default to
             // empty so the `{{upload_date}}` token renders blank when unset.
             upload_date: String::new(),
+            upload_datetime_utc: String::new(),
             primary_depot_id: metadata.primary_depot_id.clone(),
             primary_manifest_id,
             depots,
@@ -111,6 +108,11 @@ impl TemplateMetadata {
     /// originates from the frontend rather than job.json.
     pub fn set_upload_date(&mut self, upload_date: String) {
         self.upload_date = upload_date;
+    }
+
+    /// Records when the package was produced, for `{{upload_datetime_utc}}`.
+    pub fn set_packaged_at(&mut self, when: DateTime<Utc>) {
+        self.upload_datetime_utc = format_utc_datetime(when);
     }
 }
 
@@ -147,6 +149,19 @@ fn map_platform_to_os(platform: &str) -> String {
     }
 }
 
+/// "February 24, 2025 - 22:02:36 UTC": the one timestamp style templates use.
+pub fn format_utc_datetime(when: DateTime<Utc>) -> String {
+    format!(
+        "{} {}, {} - {:02}:{:02}:{:02} UTC",
+        month_name(when.month()),
+        when.day(),
+        when.year(),
+        when.hour(),
+        when.minute(),
+        when.second()
+    )
+}
+
 fn month_name(month: u32) -> &'static str {
     match month {
         1 => "January",
@@ -169,6 +184,13 @@ fn month_name(month: u32) -> &'static str {
 mod tests {
     use super::*;
     use crate::job_metadata::{BuildIdSource, DepotInfo, JobMetadataFile};
+
+    #[test]
+    fn packaged_at_uses_template_timestamp_style() {
+        use chrono::TimeZone;
+        let when = Utc.with_ymd_and_hms(2026, 10, 7, 18, 3, 9).unwrap();
+        assert_eq!(format_utc_datetime(when), "October 7, 2026 - 18:03:09 UTC");
+    }
 
     #[test]
     fn primary_tokens_resolve_to_primary_depot() {

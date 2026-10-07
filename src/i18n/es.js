@@ -167,6 +167,7 @@ export default {
   "template.help.field.website": "La URL del sitio web oficial del juego.",
   "template.help.field.username": "Tu nombre de uploader desde Ajustes.",
   "template.help.field.upload_date": "La fecha de subida desde Ajustes.",
+  "template.help.field.upload_datetime_utc": "Cuándo se creó este paquete (UTC). Los perfiles integrados usan la fecha de la build de Steam.",
   "template.help.field.depot_id": "El ID numérico del depósito.",
   "template.help.field.depot_name": "El nombre del depósito.",
   "template.help.field.manifest_id": "El número de ID de manifiesto del depósito.",

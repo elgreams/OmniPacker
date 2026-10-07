@@ -1969,6 +1969,8 @@ fn run_depotdownloader_worker(
                             template_metadata.set_upload_date(
                                 job_for_monitor.upload_date.clone(),
                             );
+                            // Pack time, for custom profiles that use {{upload_datetime_utc}}.
+                            template_metadata.set_packaged_at(chrono::Utc::now());
                             app_handle_clone
                                 .state::<TemplateMetadataState>()
                                 .set(template_metadata);

@@ -26,6 +26,7 @@ for (const testCase of fixture.cases) {
   const result = renderTemplateOutput(testCase.blocks, fixture.metadata, {
     username: fixture.metadata.username,
     uploadDate: fixture.metadata.upload_date,
+    uploadDateTimeUtc: fixture.metadata.upload_datetime_utc,
     formatError,
   });
   const actual = result.error !== undefined ? result.error : result.output;

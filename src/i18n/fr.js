@@ -167,6 +167,7 @@ export default {
   "template.help.field.website": "L'URL du site officiel du jeu.",
   "template.help.field.username": "Votre nom d'uploader depuis les Paramètres.",
   "template.help.field.upload_date": "La date d'envoi depuis les Paramètres.",
+  "template.help.field.upload_datetime_utc": "Date de création de ce paquet (UTC). Les profils intégrés utilisent la date du build Steam.",
   "template.help.field.depot_id": "L'identifiant numérique du dépôt.",
   "template.help.field.depot_name": "Le nom du dépôt.",
   "template.help.field.manifest_id": "Le numéro d'ID de manifeste du dépôt.",
