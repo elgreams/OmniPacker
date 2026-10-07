@@ -45,8 +45,8 @@ impl SevenZipRunnerState {
         }
     }
 
-    /// Clears a previous cancel request. Call once when a job's compression
-    /// starts, not between its compress and test steps.
+    /// Clears a previous cancel request. Call once when a job starts, never
+    /// between that and its compress/test steps, or a cancel could be lost.
     pub fn reset_cancel(&self) {
         self.cancelled.store(false, Ordering::SeqCst);
     }
@@ -108,10 +108,10 @@ pub fn cancel_7zip(
         .lock()
         .map_err(|_| "Failed to lock 7-Zip state".to_string())?;
 
-    // Record the cancel first, even if no child is running right now: between
-    // compressing and testing an archive there's a moment with no 7-Zip
-    // process, and a cancel landing there must still stop the next step.
-    // The flag is only reset when a new compression run begins.
+    // Record the cancel first, even if no child is running right now: before
+    // 7-Zip spawns, and between compressing and testing, there's no process
+    // to kill, and a cancel landing there must still stop the next step.
+    // The flag is only reset when the next job starts.
     state.cancelled.store(true, Ordering::SeqCst);
 
     let Some(child) = guard.as_mut() else {
@@ -929,13 +929,20 @@ mod tests {
     }
 
     #[test]
-    fn cancel_flag_survives_between_compress_and_test() {
-        // Cancel with nothing running (the gap between compress and test) must
-        // be remembered so the next 7-Zip run is skipped, until reset_cancel.
+    fn cancel_with_no_7zip_running_is_remembered_until_next_job() {
+        // The frontend sends Cancel to 7-Zip as soon as "compressing" shows,
+        // which can be before 7-Zip has spawned (or between compress and
+        // test). That cancel must be kept so the next 7-Zip step is skipped;
+        // only the next job's start clears it. Mirrors cancel_7zip's logic
+        // without an AppHandle.
         let state = SevenZipRunnerState::new();
+        state.reset_cancel(); // job start
+        // cancel_7zip with no child: records the request, nothing to kill.
         state.cancelled.store(true, Ordering::SeqCst);
-        assert!(state.cancelled.load(Ordering::SeqCst));
-        state.reset_cancel();
+        assert!(state.child.lock().unwrap().is_none());
+        // compress_output must NOT reset it before spawning 7-Zip.
+        assert!(state.cancelled.load(Ordering::SeqCst), "cancel before spawn is kept");
+        state.reset_cancel(); // next job's start
         assert!(!state.cancelled.load(Ordering::SeqCst));
     }
 

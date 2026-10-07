@@ -1432,9 +1432,10 @@ fn compress_output(
         job_id,
     );
 
+    // The cancel flag was reset when this job started (run_depotdownloader),
+    // so any cancel the user made since then, including one landing between
+    // the "compressing" status and this point, is honored here.
     let zip_state = app_handle.state::<SevenZipRunnerState>();
-    // New job, new run: forget any cancel left over from a previous job.
-    zip_state.reset_cancel();
     let exit_code = match run_7zip_blocking(app_handle, &zip_state, args) {
         Ok(SevenZipOutcome::Exited(code)) => code,
         Ok(SevenZipOutcome::Cancelled) => {
@@ -1703,6 +1704,11 @@ pub fn run_depotdownloader(
             return Err("DepotDownloader is already running".to_string());
         }
         guard.reset_parse_state();
+        // Forget a 7-Zip cancel left over from a previous job. Done here, at
+        // job start, rather than right before compressing: the frontend routes
+        // Cancel to 7-Zip as soon as the "compressing" status arrives, and a
+        // reset after that point would silently swallow the user's cancel.
+        app_handle.state::<SevenZipRunnerState>().reset_cancel();
 
         let job_id = generate_job_id();
         guard.job_id = Some(job_id.clone());
