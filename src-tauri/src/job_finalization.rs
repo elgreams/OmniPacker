@@ -761,6 +761,157 @@ where
     Ok(())
 }
 
+/// End-to-end check of the finalize → 7-Zip → template pipeline against a REAL
+/// DepotDownloader download. Ignored by default (needs network-free real data
+/// on disk); run with:
+///
+/// `OMNIPACKER_E2E_DEPOTS=/path/to/dd/run cargo test e2e_real_download -- --ignored --nocapture`
+///
+/// where the path is DepotDownloader's working dir (the one containing
+/// `depots/`). The source is copied first, so it's left intact.
+#[cfg(test)]
+mod e2e {
+    use super::*;
+    use crate::job_metadata::{BuildIdSource, DepotInfo, JobMetadataFile};
+
+    fn copy_tree(src: &Path, dst: &Path) {
+        fs::create_dir_all(dst).unwrap();
+        for entry in fs::read_dir(src).unwrap().flatten() {
+            let to = dst.join(entry.file_name());
+            if entry.path().is_dir() {
+                copy_tree(&entry.path(), &to);
+            } else {
+                fs::copy(entry.path(), to).unwrap();
+            }
+        }
+    }
+
+    /// Reads the manifest ID from DD's `{depot}_{manifest}.manifest` file.
+    fn manifest_on_disk(staging: &Path, depot: &str, build: &str) -> String {
+        let dir = staging.join("depots").join(depot).join(build).join(".DepotDownloader");
+        fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                name.strip_suffix(".manifest")?
+                    .strip_prefix(&format!("{depot}_"))
+                    .map(str::to_string)
+            })
+            .next()
+            .expect("manifest file")
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_real_download() {
+        let Ok(src) = std::env::var("OMNIPACKER_E2E_DEPOTS") else {
+            panic!("set OMNIPACKER_E2E_DEPOTS to a DepotDownloader working dir");
+        };
+        let src = PathBuf::from(src);
+        let root = std::env::temp_dir().join(format!(
+            "omnipacker_e2e_{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let staging = root.join("staging");
+        copy_tree(&src.join("depots"), &staging.join("depots"));
+
+        // Metadata as derive_metadata_from_download would build it for Balatro.
+        let build_id = fs::read_dir(staging.join("depots/2379781"))
+            .unwrap()
+            .flatten()
+            .find(|e| e.path().is_dir())
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .to_string();
+        let depot = |id: &str, name: &str| DepotInfo {
+            depot_id: id.into(),
+            depot_name: name.into(),
+            manifest_id: manifest_on_disk(&staging, id, &build_id),
+            manifest_id_used: None,
+            dlcappid: None,
+        };
+        let mut meta = JobMetadataFile::new(
+            "e2e".into(),
+            "2379780".into(),
+            "Public".into(),
+            "Win64".into(),
+            "2379781".into(),
+            "Balatro".into(),
+            build_id.clone(),
+            BuildIdSource::PrimaryManifestId,
+            None,
+            vec![
+                depot("228989", "Steamworks Common Redistributables"),
+                depot("2379781", "Balatro"),
+            ],
+        );
+        meta.install_dir = Some("Balatro".into());
+
+        // 1. Assemble (the real move-based merge + .acf generation).
+        let temp = root.join(".tmp_e2e");
+        fs::create_dir_all(&temp).unwrap();
+        let collisions = assemble_temp_output(&temp, &staging, &meta).expect("assemble");
+        assert!(collisions.is_empty(), "unexpected depot collisions: {collisions:?}");
+
+        let common = temp.join("steamapps/common");
+        assert!(common.join("Balatro/Balatro.exe").is_file(), "game exe in install dir");
+        assert!(common.join("Steamworks Shared/_CommonRedist").is_dir(), "redist in shared folder");
+        assert!(!common.join("Balatro/.DepotDownloader").exists(), "DD bookkeeping excluded");
+        // Moved, not copied: game files are gone from staging.
+        assert!(
+            !staging.join(format!("depots/2379781/{build_id}/Balatro.exe")).exists(),
+            "files should have been moved out of staging"
+        );
+        let acf = fs::read_to_string(temp.join("steamapps/appmanifest_2379780.acf")).unwrap();
+        assert!(acf.contains(&format!("\"buildid\"\t\t\"{build_id}\"")));
+        assert!(acf.contains("\"installdir\"\t\t\"Balatro\""));
+        assert!(acf.contains("\"2379781\""));
+        assert!(temp.join("steamapps/appmanifest_228980.acf").is_file(), "redist manifest");
+        let cache: Vec<_> = fs::read_dir(temp.join("depotcache")).unwrap().flatten().collect();
+        assert_eq!(cache.len(), 2, "one .manifest per depot in depotcache");
+
+        // 2. Final rename into place.
+        let final_dir = root.join(format!("Balatro.Build.{build_id}.Win64.Public"));
+        atomic_finalize(&temp, &final_dir).expect("finalize rename");
+
+        // 3. Compress with the bundled 7-Zip and the real arg builder.
+        let archive = resolve_archive_path(&final_dir);
+        let args = crate::zip_runner::calculate_7z_compression_args(&final_dir, &archive, None, None, None);
+        let zz = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries/linux-x64/7zz");
+        let status = std::process::Command::new(&zz).args(&args).stdout(std::process::Stdio::null()).status().unwrap();
+        assert!(status.success(), "7-Zip failed");
+        let listing = std::process::Command::new(&zz).args(["l", "-slt", archive.to_str().unwrap()]).output().unwrap();
+        let listing = String::from_utf8_lossy(&listing.stdout).to_string();
+        // Entry paths only (the first "Path =" is the archive file itself).
+        let entries: Vec<&str> = listing
+            .lines()
+            .filter_map(|l| l.strip_prefix("Path = "))
+            .skip(1)
+            .collect();
+        assert!(entries.iter().any(|p| p.starts_with("steamapps/common/Balatro/")), "game under steamapps/");
+        assert!(entries.iter().all(|p| p.starts_with("steamapps") || p.starts_with("depotcache")),
+            "archive root must be steamapps/ + depotcache/, no wrapper folder");
+
+        // 4. Template next to the archive.
+        let template_meta = crate::template_metadata::TemplateMetadata::from_job_metadata(&meta);
+        crate::template_renderer::write_template_files(&archive, &template_meta, &[]).unwrap();
+        let txt = fs::read_to_string(root.join(format!("Balatro.Build.{build_id}.Win64.Public.txt"))).unwrap();
+        assert!(txt.contains("Balatro") && txt.contains(&build_id));
+
+        println!("\n--- e2e OK: {}", archive.display());
+        println!("--- .acf ---\n{acf}");
+        println!("--- template ---\n{txt}");
+        println!("--- archive listing (head) ---");
+        for entry in entries.iter().take(25) {
+            println!("{entry}");
+        }
+        println!("... {} entries total", entries.len());
+        fs::remove_dir_all(&root).ok();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
