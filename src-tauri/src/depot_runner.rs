@@ -3097,7 +3097,7 @@ fn parse_dotnet_datetime_str(text: &str, pattern: &Regex) -> Option<DateTime<Utc
 }
 
 #[cfg(windows)]
-fn decode_console_bytes(buf: &[u8]) -> String {
+pub(crate) fn decode_console_bytes(buf: &[u8]) -> String {
     // .NET pipes stdout as UTF-8 when there is no console attached.
     // Try UTF-8 first; only fall back to the Windows console codepage
     // for legacy programs that emit OEM-encoded bytes.

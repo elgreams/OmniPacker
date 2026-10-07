@@ -515,6 +515,33 @@ fn is_progress_line(line: &str) -> bool {
     number.parse::<u8>().is_ok()
 }
 
+/// Splits off everything up to and including the last \r, \n or backspace in
+/// `pending`, leaving any unfinished run behind. Those three bytes are the
+/// same in UTF-8 and every console code page, so the returned bytes never end
+/// mid-character. Returns `None` when there's no boundary yet, unless the
+/// unfinished run is over 4 KiB (then it's all returned so memory stays bounded).
+fn take_complete_runs(pending: &mut Vec<u8>) -> Option<Vec<u8>> {
+    match pending.iter().rposition(|&b| b == b'\r' || b == b'\n' || b == 0x08) {
+        Some(i) => Some(pending.drain(..=i).collect()),
+        None if pending.len() >= 4096 => Some(std::mem::take(pending)),
+        None => None,
+    }
+}
+
+/// Decodes 7-Zip output. UTF-8 when valid; on Windows otherwise the console
+/// code page (localized Windows emits e.g. CP850, so paths like "Éditeur"
+/// would show as "�diteur"), using the same decoder as DepotDownloader's.
+fn decode_output_bytes(bytes: &[u8]) -> String {
+    #[cfg(windows)]
+    {
+        crate::depot_runner::decode_console_bytes(bytes)
+    }
+    #[cfg(not(windows))]
+    {
+        String::from_utf8_lossy(bytes).into_owned()
+    }
+}
+
 fn spawn_log_reader(app_handle: AppHandle, stream: impl std::io::Read + Send + 'static, tag: &str) {
     let stream_name = tag.to_string();
     let mut log = DebugLog::new(&app_handle, &format!("7z-{tag}"));
@@ -526,10 +553,20 @@ fn spawn_log_reader(app_handle: AppHandle, stream: impl std::io::Read + Send + '
         let mut last_percent: Option<u8> = None;
         let mut last_was_cr = false;
 
+        // Bytes not yet decoded. 7-Zip's output is split on \r/\n/backspace
+        // (all single-byte in UTF-8 and every console code page), and only the
+        // complete runs between them are decoded, so a multi-byte character
+        // split across two reads is never mangled.
+        let mut pending: Vec<u8> = Vec::new();
+
         // Read until EOF (Ok(0)) or a read error.
         while let Ok(n @ 1..) = reader.read(&mut buffer) {
-            let chunk = String::from_utf8_lossy(&buffer[..n]).to_string();
-            debug_log!(log, "[RAW {n} bytes] {chunk}");
+            pending.extend_from_slice(&buffer[..n]);
+            let Some(ready) = take_complete_runs(&mut pending) else {
+                continue; // wait for the rest of this run
+            };
+            let chunk = decode_output_bytes(&ready);
+            debug_log!(log, "[RAW {} bytes] {chunk}", ready.len());
             for ch in chunk.chars() {
                 match ch {
                     '\r' => {
@@ -593,6 +630,9 @@ fn spawn_log_reader(app_handle: AppHandle, stream: impl std::io::Read + Send + '
             }
         }
 
+        if !pending.is_empty() {
+            current_line.push_str(&decode_output_bytes(&pending));
+        }
         if !current_line.is_empty() {
             let line = current_line.trim_end_matches('\r').to_string();
             if !is_progress_line(&line) {
@@ -870,6 +910,22 @@ mod tests {
         assert_ne!(run(archive_test_args(&first, Some("pw"))), 0, "corrupt middle volume fails");
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn output_runs_never_split_a_multibyte_character() {
+        // "É" is 0xC3 0x89 in UTF-8. Deliver it split across two reads.
+        let mut pending = b"A steamapps/\xC3".to_vec();
+        assert_eq!(take_complete_runs(&mut pending), None, "no line boundary yet");
+        pending.extend_from_slice(b"\x89diteur.exe\r  5% next");
+        let ready = take_complete_runs(&mut pending).unwrap();
+        assert_eq!(decode_output_bytes(&ready), "A steamapps/Éditeur.exe\r");
+        assert_eq!(pending, b"  5% next", "unfinished run kept for the next read");
+
+        // A run with no boundary is flushed once it's large, never held forever.
+        let mut long = vec![b'x'; 5000];
+        assert_eq!(take_complete_runs(&mut long).map(|v| v.len()), Some(5000));
+        assert!(long.is_empty());
     }
 
     #[test]
