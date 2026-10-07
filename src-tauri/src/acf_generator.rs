@@ -38,7 +38,7 @@ impl VdfBuilder {
     /// Writes a key-value pair: `"key"<TAB><TAB>"value"`
     fn key_value(&mut self, key: &str, value: &str) {
         self.indent();
-        self.content.push_str(&format!("\"{}\"\t\t\"{}\"\n", key, value));
+        self.content.push_str(&format!("\"{}\"\t\t\"{}\"\n", vdf_escape(key), vdf_escape(value)));
     }
 
     /// Opens a new section: "name"\n{\n
@@ -61,6 +61,14 @@ impl VdfBuilder {
     fn build(self) -> String {
         self.content
     }
+}
+
+/// Escapes a string for a quoted VDF value: backslash and double quote, the
+/// two characters Steam's KeyValues parser treats specially inside quotes.
+/// Without this, a name containing `"` would end the value early and corrupt
+/// the rest of the .acf.
+fn vdf_escape(raw: &str) -> String {
+    raw.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 /// Calculates the total size of all files in a directory recursively
@@ -309,9 +317,10 @@ pub fn write_shared_depots_acf(
         entries.sort_by(|a, b| a.0.cmp(b.0));
         vdf.open_section("InstallScripts");
         for (depot_id, script_path) in entries {
-            // Steam stores these paths with escaped backslash separators, e.g.
-            // "_CommonRedist\\vcredist\\2012\\installscript.vdf"
-            let windows_path = script_path.replace('/', r"\\");
+            // Steam stores these as Windows paths, written escaped in the file:
+            // "_CommonRedist\\vcredist\\2012\\installscript.vdf". key_value
+            // does the escaping, so pass single backslashes here.
+            let windows_path = script_path.replace('/', "\\");
             vdf.key_value(depot_id, &windows_path);
         }
         vdf.close_section();
@@ -356,6 +365,27 @@ mod tests {
                 dlcappid: None,
             }],
         )
+    }
+
+    #[test]
+    fn install_script_paths_keep_steams_escaped_backslash_form() {
+        // Same bytes as before escaping moved into key_value: Steam's own
+        // appmanifest_228980.acf writes "_CommonRedist\\vcredist\\...".
+        let mut vdf = VdfBuilder::new();
+        let windows_path = "_CommonRedist/vcredist/2012/installscript.vdf".replace('/', "\\");
+        vdf.key_value("228984", &windows_path);
+        assert_eq!(
+            vdf.build(),
+            "\"228984\"\t\t\"_CommonRedist\\\\vcredist\\\\2012\\\\installscript.vdf\"\n"
+        );
+    }
+
+    #[test]
+    fn vdf_values_with_quotes_and_backslashes_are_escaped() {
+        let mut vdf = VdfBuilder::new();
+        vdf.key_value("name", r#"Say "Hi" \ Bye"#);
+        assert_eq!(vdf.build(), "\"name\"\t\t\"Say \\\"Hi\\\" \\\\ Bye\"\n");
+        assert_eq!(vdf_escape("Plain Name"), "Plain Name");
     }
 
     #[test]
