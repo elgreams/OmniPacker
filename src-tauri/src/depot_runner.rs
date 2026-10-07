@@ -1178,6 +1178,18 @@ fn describe_depot_collisions(
     lines
 }
 
+/// Payload for `dd:compression_summary`: raw numbers for the finished-job card
+/// (the frontend formats them in the user's language).
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CompressionSummaryPayload {
+    job_id: String,
+    level: CompressionLevel,
+    elapsed_secs: u64,
+    source_bytes: u64,
+    archive_bytes: u64,
+}
+
 /// Payload for `dd:build_mismatch`: the build Steam actually served is older
 /// than the branch's current build per a second, independent source.
 #[derive(Clone, Serialize)]
@@ -2190,6 +2202,16 @@ fn run_depotdownloader_worker(
                                         "system",
                                         &compression_summary(job_for_monitor.compression_level, &result),
                                         &job_id_for_monitor,
+                                    );
+                                    let _ = app_handle_clone.emit(
+                                        "dd:compression_summary",
+                                        CompressionSummaryPayload {
+                                            job_id: job_id_for_monitor.clone(),
+                                            level: job_for_monitor.compression_level,
+                                            elapsed_secs: result.elapsed.as_secs(),
+                                            source_bytes: result.source_bytes,
+                                            archive_bytes: result.archive_bytes,
+                                        },
                                     );
                                     final_output_path = result.archive_path;
                                 }

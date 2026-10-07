@@ -230,7 +230,7 @@ pub fn run_7zip_blocking(
 /// How hard 7-Zip compresses. Ultra (`-mx9`) is the historical default and
 /// gives the smallest archives; the lower levels trade size for time, which
 /// matters on 100+ GB games where Ultra can take hours.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CompressionLevel {
     Fast,

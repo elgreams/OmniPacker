@@ -1763,6 +1763,9 @@ const createJob = ({
     // Set by dd:build_mismatch when Steam served an older build than the
     // branch's current one: { downloadedBuild, latestBuild }.
     buildMismatch: null,
+    // Set by dd:compression_summary when the archive is done:
+    // { level, elapsedSecs, sourceBytes, archiveBytes }.
+    compressionSummary: null,
     backendJobId: null, // Job ID assigned by backend (staging directory name)
     stagingDir: null, // Staging directory path
   };
@@ -2154,6 +2157,7 @@ const resetJobForRetry = (job) => {
   job.steamGuardPending = false;
   job.steamGuardEmailPending = false;
   job.buildMismatch = null;
+  job.compressionSummary = null;
 };
 
 const requestSteamGuardEmailRetry = (job) => {
@@ -3024,6 +3028,22 @@ if (tauriEvent?.listen) {
     openOutputConflictModal(payload);
   });
 
+  tauriEvent.listen("dd:compression_summary", (event) => {
+    const payload = event.payload ?? {};
+    const job = resolveEventJob(payload);
+    if (!job) {
+      warnOrphanEvent("dd:compression_summary", payload);
+      return;
+    }
+    job.compressionSummary = {
+      level: String(payload.level || ""),
+      elapsedSecs: Number(payload.elapsedSecs) || 0,
+      sourceBytes: Number(payload.sourceBytes) || 0,
+      archiveBytes: Number(payload.archiveBytes) || 0,
+    };
+    renderQueue();
+  });
+
   tauriEvent.listen("dd:build_mismatch", (event) => {
     const payload = event.payload ?? {};
     const job = resolveEventJob(payload);
@@ -3460,6 +3480,57 @@ const copyQrText = async () => {
   document.body.removeChild(textarea);
 };
 
+// Locale for number formatting, from the UI language (decimal comma in fr/de/es/ru).
+const numberLocale = () => settingsState.language || "en";
+
+// Binary units, matching the backend log line and how 7-Zip/Windows report sizes.
+const formatCardBytes = (bytes) => {
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let value = Number(bytes) || 0;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  if (unit === 0) {
+    return `${Math.round(value)} B`;
+  }
+  const number = value.toLocaleString(numberLocale(), {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  return `${number} ${units[unit]}`;
+};
+
+const formatCardElapsed = (totalSecs) => {
+  const secs = Math.max(0, Math.round(totalSecs));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  if (h > 0) return `${h}h ${pad(m)}m`;
+  if (m > 0) return `${m}m ${pad(s)}s`;
+  return `${s}s`;
+};
+
+// e.g. "41.2 GiB (29% of 142.1 GiB) · 12m 34s · Ultra"
+const formatCompressionCardLine = (summary) => {
+  const level = COMPRESSION_LEVELS.includes(summary.level)
+    ? t(`queue.statsLevel.${summary.level}`)
+    : summary.level;
+  const percent =
+    summary.sourceBytes > 0
+      ? Math.round((summary.archiveBytes / summary.sourceBytes) * 100)
+      : null;
+  return t(percent === null ? "queue.statsNoRatio" : "queue.stats", {
+    size: formatCardBytes(summary.archiveBytes),
+    percent: percent === null ? "" : percent.toLocaleString(numberLocale()),
+    source: formatCardBytes(summary.sourceBytes),
+    time: formatCardElapsed(summary.elapsedSecs),
+    level,
+  });
+};
+
 const renderQueue = () => {
   if (!queueList) {
     return;
@@ -3652,6 +3723,13 @@ const renderQueue = () => {
     }
 
     row.appendChild(meta);
+
+    if (job.status === "done" && job.compressionSummary) {
+      const stats = document.createElement("div");
+      stats.className = "queue-item-stats";
+      stats.textContent = formatCompressionCardLine(job.compressionSummary);
+      row.appendChild(stats);
+    }
 
     if (job.buildMismatch) {
       const warning = document.createElement("div");
