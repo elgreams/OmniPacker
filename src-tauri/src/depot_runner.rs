@@ -1107,20 +1107,23 @@ enum BranchDelivery {
 }
 
 /// Decides how a non-public branch was delivered from the depots that were
-/// downloaded and the ones DepotDownloader fell back to public for. Shared
-/// redist depots are ignored: they always come from their own app's public
-/// branch (228980 has no betas), so they fall back on every beta download.
+/// downloaded and the ones DepotDownloader fell back to public for. Only the
+/// game's own depots count (`is_game_depot`): shared redists always come from
+/// their own app's public branch (228980 has no betas), and DLC depots rarely
+/// carry the game's betas, and those listed under a DLC app are taken from
+/// public without the fallback warning. Counting a DLC as "delivered" would
+/// let a wrong beta password pack public content under the beta's name.
 fn classify_branch_delivery(
     requested_branch: &str,
     downloaded_depots: &[String],
     fallback_depots: &std::collections::HashSet<String>,
-    is_shared: impl Fn(&str) -> bool,
+    is_game_depot: impl Fn(&str) -> bool,
 ) -> BranchDelivery {
     let branch = requested_branch.trim();
     if branch.is_empty() || branch.eq_ignore_ascii_case("public") {
         return BranchDelivery::AsRequested;
     }
-    let game_depots: Vec<&String> = downloaded_depots.iter().filter(|d| !is_shared(d)).collect();
+    let game_depots: Vec<&String> = downloaded_depots.iter().filter(|d| is_game_depot(d)).collect();
     let mut fell_back: Vec<String> = game_depots
         .iter()
         .filter(|d| fallback_depots.contains(d.as_str()))
@@ -1135,6 +1138,17 @@ fn classify_branch_delivery(
     } else {
         BranchDelivery::Partial(fell_back)
     }
+}
+
+/// Whether DepotDownloader reported `depot` as belonging to a DLC. A dlcappid
+/// equal to the game's own appid marks a base-game depot, as in
+/// `select_primary_depot`.
+fn is_dlc_depot(
+    depot_dlcappids: &std::collections::HashMap<String, String>,
+    depot: &str,
+    app_id: &str,
+) -> bool {
+    depot_dlcappids.get(depot).is_some_and(|dlc| dlc != app_id)
 }
 
 /// Lists the depot directories DepotDownloader produced under `depots/`.
@@ -2006,16 +2020,25 @@ fn run_depotdownloader_worker(
                 // Branch fallback check: DepotDownloader silently swaps in public
                 // for depots with no manifest on the requested branch, and the
                 // output would still be named after the requested branch.
-                let (fallback_depots, unavailable_depots) = state_handle
+                let (fallback_depots, unavailable_depots, depot_dlcappids) = state_handle
                     .lock()
-                    .map(|g| (g.branch_fallback_depots.clone(), g.unavailable_depots.clone()))
+                    .map(|g| {
+                        (
+                            g.branch_fallback_depots.clone(),
+                            g.unavailable_depots.clone(),
+                            g.depot_dlcappids.clone(),
+                        )
+                    })
                     .unwrap_or_default();
                 let downloaded = downloaded_depot_ids(&staging_dir_for_monitor);
                 let delivery = classify_branch_delivery(
                     &job_for_monitor.branch,
                     &downloaded,
                     &fallback_depots,
-                    crate::shared_depots::is_shared_depot,
+                    |d| {
+                        !crate::shared_depots::is_shared_depot(d)
+                            && !is_dlc_depot(&depot_dlcappids, d, &job_for_monitor.app_id)
+                    },
                 );
                 report_dlc_status(
                     &app_handle_clone,
@@ -3359,22 +3382,22 @@ mod tests {
         use std::collections::HashSet;
         let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let set = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<HashSet<_>>();
-        let shared = |id: &str| id == "228989" || id == "228990";
+        let is_game = |id: &str| id != "228989" && id != "228990";
         let downloaded = ids(&["228989", "228990", "3321461", "3321462"]);
 
         // Public never "falls back".
         assert_eq!(
-            classify_branch_delivery("public", &downloaded, &set(&["3321461"]), shared),
+            classify_branch_delivery("public", &downloaded, &set(&["3321461"]), is_game),
             BranchDelivery::AsRequested
         );
         // Only redists fell back (they always do on a beta): fine.
         assert_eq!(
-            classify_branch_delivery("beta", &downloaded, &set(&["228989", "228990"]), shared),
+            classify_branch_delivery("beta", &downloaded, &set(&["228989", "228990"]), is_game),
             BranchDelivery::AsRequested
         );
         // One game depot from public: partial, logged, job continues.
         assert_eq!(
-            classify_branch_delivery("beta", &downloaded, &set(&["228989", "3321462"]), shared),
+            classify_branch_delivery("beta", &downloaded, &set(&["228989", "3321462"]), is_game),
             BranchDelivery::Partial(vec!["3321462".to_string()])
         );
         // Every game depot from public: the branch was never delivered.
@@ -3383,9 +3406,39 @@ mod tests {
                 "beta",
                 &downloaded,
                 &set(&["228989", "228990", "3321461", "3321462"]),
-                shared
+                is_game
             ),
             BranchDelivery::FellBackEntirely
+        );
+    }
+
+    #[test]
+    fn branch_check_ignores_dlc_depots() {
+        // Dagon (1481400) on a beta with a wrong password: the game depot falls
+        // back to public, while its DLC depot (listed under DLC app 1722010)
+        // comes from public silently. Counting the DLC as delivered made this
+        // look partial, so public content was packed under the beta's name.
+        use super::{classify_branch_delivery, is_dlc_depot, BranchDelivery};
+        use std::collections::{HashMap, HashSet};
+        let dlcappids = HashMap::from([
+            ("1722010".to_string(), "1722010".to_string()),
+            ("1481401".to_string(), "1481400".to_string()),
+        ]);
+        assert!(is_dlc_depot(&dlcappids, "1722010", "1481400"));
+        // A dlcappid equal to the game's own appid is a base-game depot.
+        assert!(!is_dlc_depot(&dlcappids, "1481401", "1481400"));
+        assert!(!is_dlc_depot(&dlcappids, "228990", "1481400"));
+
+        let downloaded: Vec<String> = ["1481401", "1722010", "228990"].map(String::from).to_vec();
+        let is_game = |d: &str| d != "228990" && !is_dlc_depot(&dlcappids, d, "1481400");
+        let fell_back = HashSet::from(["1481401".to_string(), "228990".to_string()]);
+        assert_eq!(
+            classify_branch_delivery("beta", &downloaded, &fell_back, is_game),
+            BranchDelivery::FellBackEntirely
+        );
+        assert_eq!(
+            classify_branch_delivery("beta", &downloaded, &HashSet::new(), is_game),
+            BranchDelivery::AsRequested
         );
     }
 
