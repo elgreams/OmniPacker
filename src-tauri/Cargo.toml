@@ -3,6 +3,7 @@ name = "omnipacker"
 version = "1.5.1"
 description = "DepotDownloader Tauri frontend scaffold"
 authors = ["OmniPacker Contributors"]
+license = "GPL-3.0-or-later"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

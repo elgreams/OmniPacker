@@ -162,3 +162,28 @@ npm install
 powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-x64.ps1
 ```
 Artifacts: `src-tauri\target\x86_64-pc-windows-msvc\release\bundle\`
+
+---
+
+## License
+
+OmniPacker is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. See [LICENSE](LICENSE) for the full text.
+
+Releases up to and including v1.5.1 were published under the GNU General Public
+License, version 2.
+
+### Bundled third-party software
+
+OmniPacker bundles these programs, which keep their own licenses. Each license
+file ships next to its binary in `src-tauri/binaries/<platform>/`:
+
+- **DepotDownloader** ([custom fork](https://github.com/elgreams/DepotDownloader)):
+  GNU GPL v2, in `DepotDownloader-LICENSE.txt`. Source code is in the fork
+  repository.
+- **7-Zip** by Igor Pavlov ([7-zip.org](https://www.7-zip.org/)): GNU LGPL with
+  BSD 3-clause and BSD 2-clause parts (and, for the Linux and macOS builds, the
+  unRAR license restriction), in `7-Zip-License.txt`. The full GNU LGPL v2.1 text
+  is in `7-Zip-LGPL-2.1.txt`.
