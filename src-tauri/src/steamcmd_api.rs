@@ -326,12 +326,64 @@ pub struct DlcCatalog {
 }
 
 /// Fetches the DLC catalog for an app. `None` when the lookup fails.
+///
+/// For `hasdepotsindlc` apps, a DLC the game lists no depots for is looked up
+/// in its own appinfo too: some games (Dagon, 1481400) list DLC depots only
+/// there, and DepotDownloader downloads them from there.
 pub fn fetch_dlc_catalog(appid: &str) -> Option<DlcCatalog> {
-    match fetch_appinfo(appid) {
-        Ok(data) => Some(parse_dlc_catalog(&data)),
+    let data = match fetch_appinfo(appid) {
+        Ok(data) => data,
         Err(err) => {
             debug_eprintln!("[STEAMCMD] DLC catalog unavailable for {}: {}", appid, err);
-            None
+            return None;
+        }
+    };
+    let mut catalog = parse_dlc_catalog(&data);
+    if has_depots_in_dlc(&data) {
+        let uncovered: Vec<String> = catalog
+            .dlc_appids
+            .iter()
+            .filter(|dlc| !catalog.depot_dlc.values().any(|owner| owner == *dlc))
+            .cloned()
+            .collect();
+        for dlc in uncovered {
+            match fetch_appinfo(&dlc) {
+                Ok(dlc_data) => add_dlc_app_depots(&mut catalog, &dlc, &dlc_data),
+                Err(err) => {
+                    debug_eprintln!("[STEAMCMD] DLC appinfo unavailable for {}: {}", dlc, err)
+                }
+            }
+        }
+    }
+    Some(catalog)
+}
+
+fn has_depots_in_dlc(app_data: &Value) -> bool {
+    app_data
+        .get("depots")
+        .and_then(|d| d.get("hasdepotsindlc"))
+        .and_then(|v| v.as_str())
+        == Some("1")
+}
+
+/// Adds the depots a DLC app lists itself (skipping shared redists, which
+/// DepotDownloader also skips there) as belonging to that DLC.
+fn add_dlc_app_depots(catalog: &mut DlcCatalog, dlc_appid: &str, dlc_data: &Value) {
+    let Some(depots) = dlc_data.get("depots").and_then(|d| d.as_object()) else {
+        return;
+    };
+    for (depot_id, depot) in depots {
+        if !depot_id.chars().all(|c| c.is_ascii_digit()) || depot.get("depotfromapp").is_some() {
+            continue;
+        }
+        catalog.depot_dlc.insert(depot_id.clone(), dlc_appid.to_string());
+        if let Some(os) = depot
+            .get("config")
+            .and_then(|c| c.get("oslist"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
+            catalog.depot_oslist.insert(depot_id.clone(), os.to_string());
         }
     }
 }
@@ -566,6 +618,38 @@ mod tests {
         assert_eq!(c.depot_dlc.get("4783050").map(String::as_str), Some("4783050"));
         assert!(!c.depot_dlc.contains_key("3321461"));
         assert_eq!(c.depot_oslist.get("5001842").map(String::as_str), Some("macos"));
+    }
+
+    #[test]
+    fn test_dlc_catalog_reads_depots_listed_in_dlc_apps() {
+        // Dagon (1481400): hasdepotsindlc, and the game lists none of its DLC
+        // depots; each lives only in its DLC app. The report called these DLC
+        // "unlock only, no files".
+        let game = serde_json::json!({
+            "extended": { "listofdlc": "1722010,1751590,2291520" },
+            "depots": {
+                "1481401": { "manifests": { "public": { "gid": "1" } } },
+                "228990": { "config": { "oslist": "windows" }, "depotfromapp": "228980", "sharedinstall": "1" },
+                "hasdepotsindlc": "1",
+                "branches": { "public": { "buildid": "24778294" } }
+            }
+        });
+        assert!(has_depots_in_dlc(&game));
+        let mut c = parse_dlc_catalog(&game);
+        assert!(c.depot_dlc.is_empty());
+
+        let dlc = serde_json::json!({
+            "depots": {
+                "1722010": { "dlcappid": "1722010", "manifests": { "public": { "gid": "2" } } },
+                "228990": { "depotfromapp": "228980" },
+                "branches": { "public": { "buildid": "7452705" } }
+            }
+        });
+        add_dlc_app_depots(&mut c, "1722010", &dlc);
+        assert_eq!(c.depot_dlc.get("1722010").map(String::as_str), Some("1722010"));
+        assert!(!c.depot_dlc.contains_key("228990"));
+
+        assert!(!has_depots_in_dlc(&serde_json::json!({ "depots": {} })));
     }
 
     #[test]
