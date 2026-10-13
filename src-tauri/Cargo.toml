@@ -1,6 +1,6 @@
 [package]
 name = "omnipacker"
-version = "1.5.1"
+version = "1.5.2"
 description = "Download and pack Steam games with DepotDownloader and 7-Zip"
 authors = ["OmniPacker Contributors"]
 license = "GPL-3.0-or-later"
