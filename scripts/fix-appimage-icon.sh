@@ -39,6 +39,13 @@ ln -sf usr/share/icons/hicolor/128x128/apps/omnipacker.png omnipacker.png
 
 cd ..
 
+# appimagetool stores each file's mode as-is. On the CI runner the extracted
+# top-level dirs (squashfs-root, usr, apprun-hooks) come out owner-only (0700),
+# and Tauri's AppRun.wrapped is 0770. Where permissions are enforced (firejail,
+# root-mounted squashfs) other users then get "AppRun: Permission denied". Make
+# everything readable, and executables and dirs traversable, by all.
+chmod -R u+rwX,go+rX,go-w squashfs-root
+
 # Get appimagetool or download it if not available
 APPIMAGETOOL=""
 if command -v appimagetool &> /dev/null; then
