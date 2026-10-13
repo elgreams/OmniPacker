@@ -1,7 +1,7 @@
 [package]
 name = "omnipacker"
 version = "1.5.1"
-description = "DepotDownloader Tauri frontend scaffold"
+description = "Download and pack Steam games with DepotDownloader and 7-Zip"
 authors = ["OmniPacker Contributors"]
 license = "GPL-3.0-or-later"
 edition = "2021"

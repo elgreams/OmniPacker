@@ -28,6 +28,7 @@
   "bundle": {
     "active": true,
     "license": "GPL-3.0-or-later",
+    "category": "Utility",
     "icon": [
       "icons/icon.png",
       "icons/icon-512.png",
